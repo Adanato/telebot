@@ -1,47 +1,65 @@
-import asyncio
-from unittest import TestCase
-from unittest.mock import patch, MagicMock
+import unittest
+from unittest.mock import patch, MagicMock, AsyncMock
 from typer.testing import CliRunner
 from telebot.interfaces.cli.main import app
-from telebot.domain.models import ChannelDigest
-from datetime import date
 
 runner = CliRunner()
 
-class TestCLI(TestCase):
-    @patch('telebot.interfaces.cli.main.TelethonScraper')
-    @patch('telebot.interfaces.cli.main.GeminiSummarizer')
-    @patch('telebot.interfaces.cli.main.GenerateDigestUseCase')
-    @patch('telebot.interfaces.cli.main.Settings')
-    def test_digest_command(self, MockSettings, MockUseCase, MockSummarizer, MockScraper):
-        # Setup mocks
-        mock_settings = MockSettings.return_value
-        mock_settings.tg_api_id = 123
-        mock_settings.tg_api_hash = "abc"
+class TestCLI(unittest.TestCase):
+    @patch("telebot.interfaces.cli.main.GenerateDigestUseCase.execute", new_callable=AsyncMock)
+    @patch("telebot.interfaces.cli.main.PDFRenderer")
+    def test_digest_command_with_pdf(self, MockRenderer, mock_execute):
+        # Setup mock execute return
+        mock_digest = MagicMock()
+        mock_digest.summaries = ["Summary"]
+        mock_digest.date = "2023-01-01"
+        mock_digest.action_items = []
+        mock_digest.key_links = []
+        mock_execute.return_value = mock_digest
         
-        mock_use_case_instance = MockUseCase.return_value
-        
-        # Async mock return
-        expected_digest = ChannelDigest(
-             channel_name="TestChannel",
-             date=date(2023, 1, 1),
-             summaries=["Summary 1"],
-             action_items=["Do this"],
-             key_links=["link1"]
-        )
-        
-        # Since asyncio.run is used in the command, we need to make execute awaitable
-        async def async_return():
-            return expected_digest
-            
-        mock_use_case_instance.execute.side_effect = lambda *args, **kwargs: async_return()
+        # Setup mock renderer
+        mock_renderer_inst = MockRenderer.return_value
+        mock_renderer_inst.render.return_value = "reports/test.pdf"
 
-        result = runner.invoke(app, ["digest", "TestChannel", "--days", "2"])
+        result = runner.invoke(app, ["digest", "@testchannel", "--pdf"])
         
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Daily Digest for TestChannel", result.stdout)
-        self.assertIn("Summary 1", result.stdout)
+        self.assertIn("PDF Report generated", result.output)
+        mock_execute.assert_called_once()
+        mock_renderer_inst.render.assert_called_once()
+
+    @patch("telebot.interfaces.cli.main.TelethonScraper")
+    def test_list_topics_command(self, MockScraper):
+        mock_scraper_inst = MockScraper.return_value
+        mock_scraper_inst.client = MagicMock()
+        mock_scraper_inst.client.start = AsyncMock()
+        mock_scraper_inst.client.__aenter__ = AsyncMock(return_value=mock_scraper_inst.client)
         
-        # Verify calls
-        MockUseCase.assert_called_once()
-        mock_use_case_instance.execute.assert_called_with("TestChannel", topic_id=None, lookback_days=2)
+        # Mock result of GetForumTopicsRequest
+        mock_topic = MagicMock()
+        mock_topic.id = 123
+        mock_topic.title = "Test Topic"
+        
+        mock_result = MagicMock()
+        mock_result.topics = [mock_topic]
+        
+        # Mock client call result
+        mock_scraper_inst.client.side_effect = AsyncMock(return_value=mock_result)
+
+        result = runner.invoke(app, ["list-topics", "@testchannel"])
+        
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("ID: 123 | Title: Test Topic", result.output)
+
+    def test_digest_invalid_channel(self):
+        # This will fail on Settings validation if .env is missing, 
+        # but in tests we often mock Settings or provide defaults.
+        with patch("telebot.interfaces.cli.main.Settings") as MockSettings:
+            MockSettings.return_value.tg_api_id = 1
+            MockSettings.return_value.tg_api_hash = "hash"
+            MockSettings.return_value.gemini_api_key = "key"
+            
+            # If execute fails
+            with patch("telebot.interfaces.cli.main.GenerateDigestUseCase.execute", side_effect=Exception("Failed")):
+                result = runner.invoke(app, ["digest", "@invalid"])
+                self.assertNotEqual(result.exit_code, 0)

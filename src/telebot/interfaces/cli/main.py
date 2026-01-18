@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings
 from telebot.application.digest import GenerateDigestUseCase
 from telebot.infrastructure.gemini import GeminiSummarizer
 from telebot.infrastructure.telegram import TelethonScraper
+from telebot.infrastructure.reporting import PDFRenderer
 
 
 class Settings(BaseSettings):
@@ -87,7 +88,6 @@ def digest(
 
     # PDF Output
     if pdf:
-        from telebot.infrastructure.reporting import PDFRenderer
         renderer = PDFRenderer()
         pdf_path = renderer.render(result, filename=f"digest_{topic or channel}_{result.date}.pdf")
         typer.echo(f"\n📄 PDF Report generated: {pdf_path}")

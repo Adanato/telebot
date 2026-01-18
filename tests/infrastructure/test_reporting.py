@@ -1,51 +1,40 @@
 import unittest
-from unittest.mock import MagicMock, patch
-import telebot.infrastructure.reporting as reporting_module
+import os
+from datetime import datetime
+from unittest.mock import patch
 from telebot.infrastructure.reporting import PDFRenderer
 from telebot.domain.models import ChannelDigest
-from datetime import date
 
 class TestPDFRenderer(unittest.TestCase):
-    def test_render_unavailable(self):
-        """Test graceful failure when WeasyPrint is missing."""
-        # Force unavailable
-        reporting_module.WEASYPRINT_AVAILABLE = False
-        
-        renderer = PDFRenderer()
-        digest = ChannelDigest(
-            channel_name="Test",
-            date=date(2023,1,1),
-            summaries=[]
+    def setUp(self):
+        self.output_dir = "test_reports_unit"
+        self.renderer = PDFRenderer(output_dir=self.output_dir)
+        self.digest = ChannelDigest(
+            channel_name="Test Channel",
+            date=datetime.now().date(),
+            summaries=["Summary 1", "Summary 2"],
+            action_items=["Action 1"],
+            key_links=["https://test.com"]
         )
-        
-        result = renderer.render(digest, "out.pdf")
-        self.assertIn("not installed", result)
+
+    def tearDown(self):
+        if os.path.exists(self.output_dir):
+            for f in os.listdir(self.output_dir):
+                os.remove(os.path.join(self.output_dir, f))
+            os.rmdir(self.output_dir)
 
     def test_render_success(self):
-        """Test PDF generation when WeasyPrint is available."""
-        # Mock HTML class and consistency
-        mock_html_cls = MagicMock()
-        mock_html_inst = mock_html_cls.return_value
+        filename = "test_report.pdf"
+        path = self.renderer.render(self.digest, filename=filename)
         
-        # Inject into module
-        reporting_module.WEASYPRINT_AVAILABLE = True
-        reporting_module.HTML = mock_html_cls
-        
-        renderer = PDFRenderer()
-        digest = ChannelDigest(
-            channel_name="Test Channel",
-            date=date(2023, 1, 1),
-            summaries=["# Title"],
-            action_items=["Action 1"]
-        )
-        
-        filename = "test_output.pdf"
-        result_path = renderer.render(digest, filename)
-        
-        self.assertTrue(result_path.endswith(filename))
-        mock_html_cls.assert_called()
-        
-        # Check content
-        call_args = mock_html_cls.call_args
-        self.assertIn("Test Channel", call_args[1]['string'])
-        self.assertIn("Action 1", call_args[1]['string'])
+        self.assertTrue(os.path.exists(path))
+        self.assertIn(filename, path)
+        self.assertGreater(os.path.getsize(path), 0)
+
+    def test_render_error_handling(self):
+        # Mock FPDF.output to simulate a disk/permission error
+        with patch("telebot.infrastructure.reporting.FPDF.output") as mock_output:
+            mock_output.side_effect = Exception("Disk Full")
+            path = self.renderer.render(self.digest, filename="crash.pdf")
+            self.assertIn("Error generating PDF", path)
+            self.assertIn("Disk Full", path)

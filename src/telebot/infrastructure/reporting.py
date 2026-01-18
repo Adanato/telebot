@@ -1,13 +1,10 @@
 import os
-import markdown
 import logging
-try:
-    from weasyprint import HTML, CSS
-    WEASYPRINT_AVAILABLE = True
-except (ImportError, OSError):
-    WEASYPRINT_AVAILABLE = False
-
+from fpdf import FPDF
+from datetime import datetime
 from telebot.domain.models import ChannelDigest
+
+from fpdf.enums import XPos, YPos
 
 logger = logging.getLogger(__name__)
 
@@ -16,64 +13,80 @@ class PDFRenderer:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def render(self, digest: ChannelDigest, filename: str = "digest.pdf") -> str:
-        """
-        Converts the ChannelDigest (with Markdown content) into a PDF.
-        """
-        if not WEASYPRINT_AVAILABLE:
-            error_msg = "WeasyPrint is not installed or system dependencies are missing. Cannot generate PDF."
-            logger.error(error_msg)
-            return error_msg
-        
-        # 1. Convert Markdown Sections to HTML
-        html_content = f"""
-        <html>
-        <head>
-            <style>
-                body {{ font-family: sans-serif; padding: 20px; }}
-                h1 {{ color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }}
-                h2 {{ color: #34495e; margin-top: 20px; }}
-                h3 {{ color: #7f8c8d; }}
-                ul {{ line-height: 1.6; }}
-                li {{ margin-bottom: 5px; }}
-                img {{ max-width: 100%; border-radius: 5px; margin: 10px 0; }}
-                .action-items {{ background-color: #fce4ec; padding: 15px; border-radius: 5px; }}
-                .key-links {{ background-color: #e3f2fd; padding: 15px; border-radius: 5px; }}
-            </style>
-        </head>
-        <body>
-            <h1>{digest.channel_name} - {digest.date}</h1>
-        """
-        
-        md = markdown.Markdown(extensions=['extra', 'nl2br'])
-        
-        for summary_part in digest.summaries:
-            # Check if this part has image references (local paths)
-            # For now, we assume the Formatter might not embed them directly yet, 
-            # but we can append a gallery if we had a list of images.
-            # Ideally the Formatter puts ![img](path) in the markdown.
-            
-            html_part = md.convert(summary_part)
-            html_content += f"<div>{html_part}</div>"
-
-        # Explicit Action Items Section
-        if digest.action_items:
-            html_content += "<div class='action-items'><h2>🚀 Action Items</h2><ul>"
-            for item in digest.action_items:
-                html_content += f"<li>{item}</li>"
-            html_content += "</ul></div>"
-
-        # KEY LINKS Section
-        if digest.key_links:
-             html_content += "<div class='key-links'><h2>🔗 Key Links</h2><ul>"
-             for link in digest.key_links:
-                 html_content += f"<li><a href='{link}'>{link}</a></li>"
-             html_content += "</ul></div>"
-
-        html_content += "</body></html>"
-
-        # 2. Write PDF
+    def render(self, digest: ChannelDigest, filename: str) -> str:
+        """Render a ChannelDigest to a professional PDF report."""
         output_path = os.path.join(self.output_dir, filename)
-        HTML(string=html_content).write_pdf(output_path)
         
-        return output_path
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            
+            # --- Header ---
+            pdf.set_font("helvetica", "B", 24)
+            pdf.set_text_color(44, 62, 80) # Dark Blue
+            pdf.cell(0, 20, "Daily Digest", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+            
+            pdf.set_font("helvetica", "B", 14)
+            pdf.set_text_color(127, 140, 141) # Grey
+            pdf.cell(0, 10, f"{digest.channel_name} - {digest.date}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+            pdf.ln(10)
+            
+            # --- Summaries ---
+            pdf.set_font("helvetica", "B", 16)
+            pdf.set_text_color(52, 152, 219) # Light Blue
+            pdf.cell(0, 10, "Summary Highlights", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_draw_color(52, 152, 219)
+            pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+            pdf.ln(5)
+            
+            pdf.set_font("helvetica", "", 11)
+            pdf.set_text_color(44, 62, 80)
+            for summary in digest.summaries:
+                # Use multi_cell for wrapping text
+                pdf.multi_cell(0, 7, f" {summary}")
+                pdf.ln(2)
+            
+            # --- Action Items ---
+            if digest.action_items:
+                pdf.ln(5)
+                pdf.set_font("helvetica", "B", 16)
+                pdf.set_text_color(231, 76, 60) # Red
+                pdf.cell(0, 10, "Action Items", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_draw_color(231, 76, 60)
+                pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+                pdf.ln(5)
+                
+                pdf.set_font("helvetica", "", 11)
+                pdf.set_text_color(44, 62, 80)
+                for item in digest.action_items:
+                    pdf.multi_cell(0, 7, f"[ ] {item}")
+                    pdf.ln(1)
+
+            # --- Key Links ---
+            if digest.key_links:
+                pdf.ln(5)
+                pdf.set_font("helvetica", "B", 16)
+                pdf.set_text_color(46, 204, 113) # Green
+                pdf.cell(0, 10, "Key Resources & Links", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                pdf.set_draw_color(46, 204, 113)
+                pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y())
+                pdf.ln(5)
+                
+                pdf.set_font("helvetica", "", 10)
+                pdf.set_text_color(41, 128, 185) # Link Blue
+                for link in digest.key_links:
+                    pdf.write(7, f" {link}", link=link)
+                    pdf.ln(7)
+
+            # --- Footer ---
+            pdf.set_y(-20)
+            pdf.set_font("helvetica", "I", 8)
+            pdf.set_text_color(149, 165, 166)
+            pdf.cell(0, 10, f"Generated by Telebot on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", align="C")
+
+            pdf.output(output_path)
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Failed to generate PDF: {e}")
+            return f"Error generating PDF: {str(e)}"
