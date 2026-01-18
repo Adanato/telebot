@@ -1,0 +1,38 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.python-version
+
+# Environment variables
+.env
+.env.local
+
+# IDE / Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Telebot Specific
+telebot.session
+telebot.session-journal
+media_cache/
+reports/
+debug_structured_input.json
+model_output.txt
+raw_messages.txt
+*.json
+!course_busters_topics.json
+
+# Caches and scratch
+.coverage
+.pytest_cache/
+.ruff_cache/
+.import_linter_cache/
+.importlinter

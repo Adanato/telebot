@@ -1,0 +1,57 @@
+[project]
+name = "telebot"
+version = "0.1.0"
+description = "Telegram Channel Summarizer Bot"
+readme = "README.md"
+authors = [{ name = "Adam", email = "adam@example.com" }]
+requires-python = ">=3.12"
+dependencies = [
+    "atomic-agents>=0.1.45",
+    "fastapi>=0.128.0",
+    "google-api-core>=2.17.0",
+    "google-genai>=1.59.0",
+    "httpx>=0.28.1",
+    "instructor>=1.14.4",
+    "pydantic-settings>=2.7.1",
+    "python-dotenv>=1.0.1",
+    "tenacity>=8.2.3",
+    "telethon>=1.39.0",
+    "typer>=0.15.1",
+    "uvicorn>=0.40.0",
+    "weasyprint>=61.0",
+    "markdown>=3.5.2",
+]
+
+[project.scripts]
+telebot = "telebot.interfaces.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.9",
+    "pyright>=1.1.408",
+    "pytest-cov>=7.0.0",
+    "pytest>=9.0.2",
+    "ruff>=0.14.11",
+    "pytest-asyncio>=1.3.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "TID"]
+ignore = []
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--cov=src/telebot --cov-report=term-missing"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
