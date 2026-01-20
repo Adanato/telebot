@@ -12,12 +12,16 @@ class ScraperInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_message_by_id(self, channel_id: str | int, message_id: int, topic_id: int | None = None) -> TelegramMessage | None:
+    async def get_message_by_id(
+        self, channel_id: str | int, message_id: int, topic_id: int | None = None
+    ) -> TelegramMessage | None:
         """Fetch a specific message by ID and verify it exists."""
         pass
 
     @abstractmethod
-    async def search_messages(self, channel_id: str | int, query: str, topic_id: int | None = None, limit: int = 5) -> list[TelegramMessage]:
+    async def search_messages(
+        self, channel_id: str | int, query: str, topic_id: int | None = None, limit: int = 5
+    ) -> list[TelegramMessage]:
         """Search for messages containing the given query."""
         pass
 
@@ -38,11 +42,21 @@ class SummarizerInterface(ABC):
 class AIProvider(ABC):
     @abstractmethod
     def generate_structured(
-        self, 
-        model_id: str, 
-        system_prompt: str, 
-        input_data: str, 
-        output_schema: type
+        self, model_id: str, system_prompt: str, input_data: str, output_schema: type
     ) -> any:
         """Generate structured output using the provider's SDK."""
+        pass
+
+
+class NotifierInterface(ABC):
+    @abstractmethod
+    async def send_message(self, text: str, chat_id: str | None = None) -> bool:
+        """Send a text message."""
+        pass
+
+    @abstractmethod
+    async def send_document(
+        self, file_path: str, caption: str | None = None, chat_id: str | None = None
+    ) -> bool:
+        """Send a document/file."""
         pass

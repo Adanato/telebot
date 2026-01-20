@@ -2,9 +2,10 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+
 def setup_logging(log_dir: str = "logs", log_level: int = logging.DEBUG):
-    """
-    Sets up centralized logging for the telebot application.
+    """Set up centralized logging for the telebot application.
+
     Logs to both console (INFO) and a persistent file (DEBUG).
     """
     os.makedirs(log_dir, exist_ok=True)
@@ -19,8 +20,7 @@ def setup_logging(log_dir: str = "logs", log_level: int = logging.DEBUG):
 
     # Formatter
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
     )
 
     # Console Handler (INFO)
@@ -31,7 +31,7 @@ def setup_logging(log_dir: str = "logs", log_level: int = logging.DEBUG):
 
     # File Handler (DEBUG, Rotating)
     file_handler = RotatingFileHandler(
-        log_file, maxBytes=10*1024*1024, backupCount=5, encoding="utf-8"
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)

@@ -2038,6 +2038,18 @@ wheels = [
 ]
 
 [[package]]
+name = "python-telegram-bot"
+version = "22.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0b/6b/400f88e5c29a270c1c519a3ca8ad0babc650ec63dbfbd1b73babf625ed54/python_telegram_bot-22.5.tar.gz", hash = "sha256:82d4efd891d04132f308f0369f5b5929e0b96957901f58bcef43911c5f6f92f8", size = 1488269 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/c3/340c7520095a8c79455fcf699cbb207225e5b36490d2b9ee557c16a7b21b/python_telegram_bot-22.5-py3-none-any.whl", hash = "sha256:4b7cd365344a7dce54312cc4520d7fa898b44d1a0e5f8c74b5bd9b540d035d16", size = 730976 },
+]
+
+[[package]]
 name = "pywin32"
 version = "311"
 source = { registry = "https://pypi.org/simple" }
@@ -2472,6 +2484,8 @@ dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
+    { name = "python-telegram-bot" },
+    { name = "pyyaml" },
     { name = "telethon" },
     { name = "tenacity" },
     { name = "typer" },
@@ -2507,6 +2521,8 @@ requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = ">=1.25.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "python-telegram-bot", specifier = ">=21.0.1" },
+    { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "telethon", specifier = ">=1.39.0" },
     { name = "tenacity", specifier = ">=8.2.3" },
     { name = "typer", specifier = ">=0.15.1" },

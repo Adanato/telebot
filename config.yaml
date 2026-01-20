@@ -1,0 +1,58 @@
+# Telebot Configuration
+ 
+# Global Settings
+global:
+  lookback_days: 1
+  report_format: "pdf" # choices: markdown, pdf
+  auto_start: true
+ 
+# List of summarization tasks
+tasks:
+  - name: "Coloso Courses"
+    channel_id: -1001603660516 # CourseBusters
+    topic_id: 2438
+    actions:
+      - "summarize"
+      - "notify"
+ 
+  - name: "Asian Artists Discussion"
+    channel_id: -1001603660516 # CourseBusters
+    topic_id: 166550
+    actions:
+      - "summarize"
+      - "notify"
+ 
+  - name: "2D Artists Lounge"
+    channel_id: -1001603660516 # CourseBusters
+    topic_id: 3077
+    actions:
+      - "summarize"
+      - "notify"
+ 
+  - name: "Members Collaboration"
+    channel_id: -1001603660516 # CourseBusters
+    topic_id: 3018
+    actions:
+      - "summarize"
+      - "notify"
+ 
+  - name: "Members Collab - All courses"
+    channel_id: -1001603660516 # CourseBusters
+    topic_id: 30478
+    actions:
+      - "summarize"
+      - "notify"
+ 
+  - name: "Pan Baidu Download Request"
+    channel_id: -1001603660516 # CourseBusters
+    topic_id: 10683
+    actions:
+      - "summarize"
+      - "notify"
+ 
+  - name: "Pan Baidu Files"
+    channel_id: -1001603660516 # CourseBusters
+    topic_id: 10686
+    actions:
+      - "summarize"
+      - "notify"

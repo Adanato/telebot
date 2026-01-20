@@ -26,10 +26,14 @@ dependencies = [
     "markdown-pdf>=1.10",
     "groq>=1.0.0",
     "mcp[cli]>=1.25.0",
+    "PyYAML>=6.0.1",
+    "python-telegram-bot>=21.0.1",
 ]
 
 [project.scripts]
 telebot = "telebot.interfaces.cli.main:app"
+telebot-worker = "telebot.application.worker:main"
+telebot-sse = "telebot.interfaces.api.sse:main"
 
 [dependency-groups]
 dev = [
@@ -42,22 +46,60 @@ dev = [
     "rust-just>=1.46.0",
 ]
 
+[tool.importlinter]
+root_package = "telebot"
+
+[[tool.importlinter.contracts]]
+name = "Domain Driven Architecture Layers"
+type = "layers"
+layers = [
+    "interfaces",
+    "application",
+    "infrastructure",
+    "domain",
+]
+containers = ["telebot"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM", "TID"]
-ignore = []
+# E: pycodestyle errors
+# F: Pyflakes
+# I: isort
+# B: flake8-bugbear
+# C4: flake8-comprehensions
+# UP: pyupgrade
+# W: pycodestyle warnings
+# C90: mccabe complexity
+# D: pydocstyle (documentation)
+# FIX: flake8-fixme (TODO detection)
+select = ["E", "F", "I", "B", "C4", "UP", "W", "TID252", "C90", "D", "FIX"]
+ignore = ["D100", "D101", "D102", "D103", "D104"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
 
 [tool.pyright]
 include = ["src"]
-typeCheckingMode = "basic"
+typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "--cov=src/telebot --cov-report=term-missing"
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+omit = ["tests/*"]
 
 [build-system]
 requires = ["hatchling"]
