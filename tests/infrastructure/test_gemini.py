@@ -1,85 +1,109 @@
 import unittest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 from telebot.infrastructure.gemini import GeminiSummarizer
-from telebot.domain.models import TelegramMessage
+from telebot.domain.models import TelegramMessage, ChannelDigest
 from telebot.infrastructure.agents import (
-    AgentType, CourseInfo, ReportOutputSchema, ReportSection, 
-    VerifierOutputSchema, CourseExtractionSchema
+    SummarizerOutputSchema, VerifierOutputSchema, DigestItem, LinkItem
 )
+import datetime
 
 class TestGeminiSummarizer(unittest.IsolatedAsyncioTestCase):
-    @patch('telebot.infrastructure.gemini.AgentOrchestrator')
-    @patch('telebot.infrastructure.gemini.asyncio.to_thread')
-    async def test_summarize_flow(self, mock_to_thread, MockOrchestrator):
-        mock_to_thread.side_effect = lambda f, *args: f(*args)
+    def setUp(self):
+        self.gemini_key = "fake_gemini"
+        self.groq_key = "fake_groq"
 
-        mock_orch = MockOrchestrator.return_value
+    @patch('telebot.infrastructure.gemini.AgentOrchestrator')
+    async def test_summarize_success(self, MockOrch):
+        mock_orch = MockOrch.return_value
+        summarizer = GeminiSummarizer(self.gemini_key, self.groq_key, provider="gemini")
         
-        # Mock agents
-        mock_course_agent = MagicMock()
-        mock_verifier = MagicMock()
-        mock_formatter = MagicMock()
-        
-        mock_orch.route_topic.return_value = [AgentType.COURSE]
-        mock_orch.get_course_agent.return_value = mock_course_agent
-        mock_orch.get_verifier_agent.return_value = mock_verifier
-        mock_orch.get_formatter_agent.return_value = mock_formatter
-        
-        # Setup returns with REAL Models
-        # Course Agent Return
-        mock_course_data = CourseExtractionSchema(
-            courses=[CourseInfo(title="C1", links=["http://l1.com"])],
-            announcements=["A1"]
+        # Setup mocks for agents
+        mock_summarizer_agent = MagicMock()
+        mock_verifier_agent = MagicMock()
+        mock_orch.get_summarizer_agent.return_value = mock_summarizer_agent
+        mock_orch.get_verifier_agent.return_value = mock_verifier_agent
+
+        # Summarizer output
+        sum_out = SummarizerOutputSchema(
+            executive_summary="Summary text",
+            items=[DigestItem(title="Item 1", description="Desc", category="course", links=["http://l1"])],
+            key_links=[LinkItem(title="T1", url="http://l1")],
+            action_items=["Task 1"]
         )
-        mock_course_agent.run.return_value = mock_course_data
-        
-        # Verifier Return
-        mock_verified_data = VerifierOutputSchema(
-            verified_courses=[CourseInfo(title="C1", links=["http://l1.com"])],
-            verified_discussion_points=[],
-            verified_files=[],
-            verified_requests=[],
-            corrections_made=[],
+        mock_summarizer_agent.run.return_value = sum_out
+
+        # Verifier output
+        ver_out = VerifierOutputSchema(
+            verified_summary="Verified Summary",
+            verified_items=[DigestItem(title="Item 1", description="Desc", category="course", links=["http://l1"])],
+            verified_action_items=["Task 1"],
+            verified_links=[LinkItem(title="T1", url="http://l1")],
+            corrections_made=[]
         )
-        mock_verifier.run.return_value = mock_verified_data
-        
-        # Formatter Return
-        mock_report = ReportOutputSchema(
-            title="Digest Title",
-            introduction="Intro",
-            sections=[ReportSection(title="S1", content="C1")],
-            conclusion="Conc",
-        )
-        mock_formatter.run.return_value = mock_report
-        
-        # Execute
-        summarizer = GeminiSummarizer(api_key="fake")
-        messages = [TelegramMessage(id=1, text="msg", date="2023-01-01", link="link")]
-        
+        mock_verifier_agent.run.return_value = ver_out
+
+        messages = [
+            TelegramMessage(id=1, text="msg1", date=datetime.datetime.now(), link="link1")
+        ]
+
         digest = await summarizer.summarize(messages, topic_id=123)
-        
-        # Verify
-        mock_orch.route_topic.assert_called_once()
-        mock_course_agent.run.assert_called_once()
-        mock_verifier.run.assert_called_once()
-        mock_formatter.run.assert_called_once()
-        
+
+        self.assertIsInstance(digest, ChannelDigest)
         self.assertEqual(digest.channel_name, "Topic 123")
-        self.assertIn("Digest Title", digest.summaries[0])
-        self.assertIn("http://l1.com", digest.key_links)
-
+        self.assertIn("Verified Summary", digest.summaries[0])
+        self.assertIn("[T1](http://l1)", digest.key_links[0])
+        
     @patch('telebot.infrastructure.gemini.AgentOrchestrator')
-    @patch('telebot.infrastructure.gemini.asyncio.to_thread')
-    async def test_summarize_error_handling(self, mock_to_thread, MockOrchestrator):
-        mock_to_thread.side_effect = lambda f, *args: f(*args)
+    async def test_summarize_error_suppression(self, MockOrch):
+        mock_orch = MockOrch.return_value
+        # Mock failure in orchestrator
+        mock_orch.get_summarizer_agent.side_effect = Exception("AI Overload")
         
-        mock_orch = MockOrchestrator.return_value
-        mock_orch.route_topic.side_effect = Exception("API Error")
-        
-        summarizer = GeminiSummarizer(api_key="fake")
-        messages = [TelegramMessage(id=1, text="msg", date="2023-01-01", link="link")]
-        
+        summarizer = GeminiSummarizer(self.gemini_key)
+        messages = [
+            TelegramMessage(id=1, text="msg1", date=datetime.datetime.now(), link="link1")
+        ]
+
         digest = await summarizer.summarize(messages, topic_id=123)
         
-        self.assertEqual(digest.channel_name, "Error")
-        self.assertIn("API Error", digest.summaries[0])
+        self.assertEqual(digest.channel_name, "Error Notice")
+        self.assertTrue(any("Summarization Incomplete" in s for s in digest.summaries))
+
+    @patch('telebot.infrastructure.gemini.AgentOrchestrator')
+    async def test_summarize_all_sections(self, MockOrch):
+        mock_orch = MockOrch.return_value
+        summarizer = GeminiSummarizer(self.gemini_key, self.groq_key, provider="groq")
+        
+        mock_summarizer_agent = MagicMock()
+        mock_verifier_agent = MagicMock()
+        mock_orch.get_summarizer_agent.return_value = mock_summarizer_agent
+        mock_orch.get_verifier_agent.return_value = mock_verifier_agent
+
+        # Verifier output with ALL sections
+        ver_out = VerifierOutputSchema(
+            verified_summary="Overall summary",
+            verified_items=[
+                DigestItem(title="F1", description="File", category="file", links=["http://f"]),
+                DigestItem(title="D1", description="Disc", category="discussion"),
+                DigestItem(title="R1", description="Req", category="request", links=["http://r"])
+            ],
+            verified_action_items=["Task 1"],
+            verified_links=[],
+            corrections_made=[]
+        )
+        mock_verifier_agent.run.return_value = ver_out
+        mock_summarizer_agent.run.return_value = SummarizerOutputSchema(
+            executive_summary="Draft",
+            items=[],
+            key_links=[],
+            action_items=[]
+        )
+
+        messages = [TelegramMessage(id=1, text="m", date=datetime.datetime.now(), link="l")]
+        digest = await summarizer.summarize(messages)
+
+        full_md = "\n".join(digest.summaries)
+        self.assertIn("## 📂 Files Shared", full_md)
+        self.assertIn("## 🗣 Discussions", full_md)
+        self.assertIn("## 🙋 Requests", full_md)
+        self.assertIn("## ✅ Action Items", full_md)

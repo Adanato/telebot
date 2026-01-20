@@ -1,43 +1,67 @@
 # Telebot
 
-Telegram Channel Summarizer Bot using Telethon and Gemini AI.
+A resilient Telegram Channel Summarizer that generates high-quality daily digests with programmatically grounded links and professional PDF reports.
 
-[View the Roadmap](ROADMAP.md) for future agentic and MCP features.
+## 🚀 Key Features
 
-## Setup
+- **Orchestrated Summarization**: A robust 3-stage agent pipeline:
+  - **Summarizer Agent**: Extracts key discussions, files, and links with source anchoring.
+  - **Verifier Agent**: Fact-checks the summary against raw data for contextual accuracy.
+  - **Programmatic Grounding**: Ensures every link exists in the source data.
+- **Active Link Repair**: Automatically queries Telegram via Telethon to verify/fix IDs that aren't in the initial scraping batch.
+- **Forum/Topic Support**: Direct support for forum-enabled channels (supergroups).
+- **Professional PDF Reports**: Generates PDFs with stable header hierarchies and clickable, verified deep-links.
+- **MCP Interface**: Exposes core functionality (digest generation, topic listing) as Model Context Protocol (MCP) tools for external AI agents.
 
-1. **Install dependencies**:
+## 🏛️ Architecture (DDA)
+
+The project follows a strict **Domain-Driven Architecture**:
+- **Domain**: Core models (`TelegramMessage`, `ChannelDigest`) and service interfaces.
+- **Application**: Business logic orchestrating scrapers and summarizers.
+- **Infrastructure**: Concrete implementations (Telethon, Gemini/Groq providers, PDF rendering).
+- **Interfaces**:
+  - `CLI`: Standard command-line tool.
+  - `MCP`: Stdio-based server for AI agents.
+
+## 🛠️ Setup
+
+1. **Install Dependencies**:
    ```bash
    uv sync
    ```
 
-2. **Configure environment**:
-   Copy `.env.example` to `.env` and fill in your credentials from [my.telegram.org](https://my.telegram.org/) and [Google AI Studio](https://aistudio.google.com/).
-
-3. **Run the CLI**:
-   ```bash
-   uv run python -m telebot.interfaces.cli.main digest @channel_username
+2. **Configuration**:
+   Create a `.env` file with these keys:
+   ```env
+   TG_API_ID=...
+   TG_API_HASH=...
+   GEMINI_API_KEY=...
+   GROQ_API_KEY=... # Optional
+   PHONE_NUMBER=... # For Telegram auth
+   LOGIN_CODE=...   # Optional
    ```
 
-4. **Run the API Server**:
-   ```bash
-   uv run uvicorn telebot.interfaces.api.app:app --host 0.0.0.0 --port 8000
-   ```
+## 📖 Usage
 
-5. **Authentication**:
-   - The bot uses `PHONE_NUMBER` and `LOGIN_CODE` from `.env` for initial session creation.
-   - The API uses `API_TOKEN` for simple header-based authentication.
+### Command Line Interface
+```bash
+# Generate a digest for a channel
+uv run telebot digest @channel_name --pdf --provider groq
 
-## Architecture (DDA)
+# Generate a digest for a specific forum topic
+uv run telebot digest -t 123456 -100... --pdf
+```
 
-- **Domain**: Core models and service interfaces.
-- **Application**: Orchestration logic (Use Cases).
-- **Infrastructure**: Concrete implementations (Telethon, Gemini).
-- **Interfaces**: CLI entry point.
+### MCP Server (for AI Agents)
+Telebot exposes an MCP server using `stdio`. To interface with it from another agent project (like Orion):
+```bash
+uv run python -m telebot.interfaces.mcp.main
+```
+**Available Tools**:
+- `generate_digest`: Parameters: `channel_id`, `topic_id`, `lookback_days`, `provider`, `pdf`.
+- `list_topics`: Parameter: `channel_id`.
 
-## Quality Assurance
-
-- **Linting**: `uv run ruff check .`
-- **Type Checking**: `uv run pyright`
-- **DDA Verification**: `uv run lint-imports`
+## Assurance
+- **Logs**: Persistent logs are saved in `logs/telebot.log`.
 - **Tests**: `uv run pytest`
+- **Linting**: `uv run ruff check .`

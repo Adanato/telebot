@@ -21,6 +21,11 @@ dependencies = [
     "weasyprint>=61.0",
     "markdown>=3.5.2",
     "fpdf2>=2.8.5",
+    "jsonref>=1.1.0",
+    "markdown2>=2.5.4",
+    "markdown-pdf>=1.10",
+    "groq>=1.0.0",
+    "mcp[cli]>=1.25.0",
 ]
 
 [project.scripts]
