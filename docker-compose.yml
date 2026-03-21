@@ -1,12 +1,12 @@
 services:
-  telebot:
+  course-scout:
     build: .
-    container_name: telebot-worker
+    container_name: course-scout-worker
     restart: always
     volumes:
       - ./reports:/app/reports
       - ./media_cache:/app/media_cache
-      - ./telebot.session:/app/telebot.session
+      - ./course_scout.session:/app/course_scout.session
       - ./.env:/app/.env
       - ./config.yaml:/app/config.yaml
     environment:

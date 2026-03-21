@@ -1,54 +1,75 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from telebot.infrastructure.providers.gemini_provider import GeminiProvider
-from telebot.infrastructure.providers.groq_provider import GroqProvider
-from telebot.infrastructure.agents import SummarizerOutputSchema
+from course_scout.infrastructure.agents import SummarizerOutputSchema
+from course_scout.infrastructure.providers.claude_provider import ClaudeProvider
 
 
-class TestProviders(unittest.TestCase):
-    @patch("telebot.infrastructure.providers.gemini_provider.genai.Client")
-    def test_gemini_provider_init(self, MockClient):
-        provider = GeminiProvider("fake_key")
-        MockClient.assert_called_once_with(api_key="fake_key")
+class TestClaudeProvider(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.provider = ClaudeProvider()
 
-    @patch("telebot.infrastructure.providers.gemini_provider.genai.Client")
-    def test_gemini_generate_structured(self, MockClient):
-        mock_client_inst = MockClient.return_value
-        mock_response = MagicMock()
-        mock_response.parsed = SummarizerOutputSchema(items=[], key_links=[], action_items=[])
-        mock_client_inst.models.generate_content.return_value = mock_response
+    @patch("course_scout.infrastructure.providers.claude_provider.query")
+    async def test_generate_structured_via_tool_output(self, mock_query):
+        """Test structured output extracted from ToolUseBlock."""
+        from claude_agent_sdk import AssistantMessage, ResultMessage, ToolUseBlock
 
-        provider = GeminiProvider("fake_key")
-        result = provider.generate_structured(
-            model_id="gemini-pro",
-            system_prompt="prompt",
-            input_data="{}",
-            output_schema=SummarizerOutputSchema,
+        tool_block = ToolUseBlock(
+            id="tool_1",
+            name="StructuredOutput",
+            input={"items": [], "key_links": [], "action_items": []},
+        )
+        assistant_msg = AssistantMessage(
+            content=[tool_block], model="claude-sonnet-4-6"
+        )
+        result_msg = ResultMessage(
+            subtype="result",
+            duration_ms=1000,
+            duration_api_ms=900,
+            is_error=False,
+            num_turns=1,
+            session_id="test",
         )
 
-        self.assertEqual(result, mock_response.parsed)
-        mock_client_inst.models.generate_content.assert_called_once()
+        async def mock_query_gen(**kwargs):
+            yield assistant_msg
+            yield result_msg
 
-    @patch("telebot.infrastructure.providers.groq_provider.Groq")
-    def test_groq_provider_init(self, MockGroq):
-        provider = GroqProvider("fake_key")
-        MockGroq.assert_called_once_with(api_key="fake_key")
+        mock_query.side_effect = lambda **kwargs: mock_query_gen(**kwargs)
 
-    @patch("telebot.infrastructure.providers.groq_provider.Groq")
-    def test_groq_generate_structured(self, MockGroq):
-        mock_client_inst = MockGroq.return_value
-        mock_output_obj = MagicMock()
-        mock_output_obj.choices[0].message.content = '{"items":[], "key_links":[], "action_items":[]}'
-        mock_client_inst.chat.completions.create.return_value = mock_output_obj
-
-        provider = GroqProvider("fake_key")
-        result = provider.generate_structured(
-            model_id="llama3",
-            system_prompt="prompt",
+        result = await self.provider.generate_structured(
+            model_id="claude-sonnet-4-6",
+            system_prompt="test",
             input_data="{}",
             output_schema=SummarizerOutputSchema,
         )
 
         self.assertIsInstance(result, SummarizerOutputSchema)
-        mock_client_inst.chat.completions.create.assert_called_once()
+        mock_query.assert_called_once()
+
+    @patch("course_scout.infrastructure.providers.claude_provider.query")
+    async def test_generate_structured_no_output_raises(self, mock_query):
+        """Test RuntimeError raised when no output received."""
+        from claude_agent_sdk import ResultMessage
+
+        result_msg = ResultMessage(
+            subtype="result",
+            duration_ms=100,
+            duration_api_ms=90,
+            is_error=False,
+            num_turns=1,
+            session_id="test",
+        )
+
+        async def mock_query_gen(**kwargs):
+            yield result_msg
+
+        mock_query.side_effect = lambda **kwargs: mock_query_gen(**kwargs)
+
+        with self.assertRaises(RuntimeError):
+            await self.provider.generate_structured(
+                model_id="claude-sonnet-4-6",
+                system_prompt="test",
+                input_data="{}",
+                output_schema=SummarizerOutputSchema,
+            )

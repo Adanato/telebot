@@ -1,29 +1,27 @@
-# Telebot
+# Course Scout
 
-A resilient Telegram Channel Summarizer that generates high-quality daily digests with programmatically grounded links and professional PDF reports.
+Telegram art channel scanner that generates daily digests with programmatically grounded links and PDF reports. Pre-configured for Course Busters and GBUYB art communities.
 
-## 🚀 Key Features
+## Key Features
 
-- **Orchestrated Summarization**: A robust 3-stage agent pipeline:
-  - **Summarizer Agent**: Extracts key discussions, files, and links with source anchoring.
-  - **Verifier Agent**: Fact-checks the summary against raw data for contextual accuracy.
-  - **Programmatic Grounding**: Ensures every link exists in the source data.
-- **Active Link Repair**: Automatically queries Telegram via Telethon to verify/fix IDs that aren't in the initial scraping batch.
-- **Forum/Topic Support**: Direct support for forum-enabled channels (supergroups).
-- **Professional PDF Reports**: Generates PDFs with stable header hierarchies and clickable, verified deep-links.
-- **MCP Interface**: Exposes core functionality (digest generation, topic listing) as Model Context Protocol (MCP) tools for external AI agents.
+- **3-Stage Agent Pipeline** (Claude-powered):
+  - **Summarizer Agent** (Sonnet): Extracts courses, files, discussions with source anchoring
+  - **Verifier Agent** (Haiku): Fact-checks against raw data for accuracy
+  - **Programmatic Grounding**: Ensures every link exists in source data
+- **Art Interest Filter**: Prioritizes 2D illustration, anatomy, color theory, character design
+- **Active Link Repair**: Queries Telegram via Telethon to verify/fix message IDs
+- **Forum/Topic Support**: Scans specific forum topics in supergroups
+- **PDF Reports**: Clickable, verified deep-links
+- **MCP Interface**: Exposes tools for external AI agents
 
-## 🏛️ Architecture (DDA)
+## Architecture (DDA)
 
-The project follows a strict **Domain-Driven Architecture**:
-- **Domain**: Core models (`TelegramMessage`, `ChannelDigest`) and service interfaces.
-- **Application**: Business logic orchestrating scrapers and summarizers.
-- **Infrastructure**: Concrete implementations (Telethon, Gemini/Groq providers, PDF rendering).
-- **Interfaces**:
-  - `CLI`: Standard command-line tool.
-  - `MCP`: Stdio-based server for AI agents.
+- **Domain**: Core models (`TelegramMessage`, `ChannelDigest`) and service interfaces
+- **Application**: Business logic orchestrating scrapers and summarizers
+- **Infrastructure**: Telethon scraper, Claude provider, PDF rendering
+- **Interfaces**: CLI, MCP (stdio), SSE server
 
-## 🛠️ Setup
+## Setup
 
 1. **Install Dependencies**:
    ```bash
@@ -31,37 +29,37 @@ The project follows a strict **Domain-Driven Architecture**:
    ```
 
 2. **Configuration**:
-   Create a `.env` file with these keys:
+   Create a `.env` file:
    ```env
    TG_API_ID=...
    TG_API_HASH=...
-   GEMINI_API_KEY=...
-   GROQ_API_KEY=... # Optional
-   PHONE_NUMBER=... # For Telegram auth
-   LOGIN_CODE=...   # Optional
+   ANTHROPIC_API_KEY=...
+   PHONE_NUMBER=...
    ```
 
-## 📖 Usage
+## Usage
 
-### Command Line Interface
+### CLI
 ```bash
-# Generate a digest for a channel
-uv run telebot digest @channel_name --pdf --provider groq
+# Generate a digest for a channel topic
+uv run course-scout digest -1001603660516 --topic 166550 --days 1
 
-# Generate a digest for a specific forum topic
-uv run telebot digest -t 123456 -100... --pdf
+# List forum topics
+uv run course-scout list-topics -1001603660516
 ```
 
-### MCP Server (for AI Agents)
-Telebot exposes an MCP server using `stdio`. To interface with it from another agent project (like Orion):
+### MCP Server
 ```bash
-uv run python -m telebot.interfaces.mcp.main
+uv run python -m course_scout.interfaces.mcp.main
 ```
-**Available Tools**:
-- `generate_digest`: Parameters: `channel_id`, `topic_id`, `lookback_days`, `provider`, `pdf`.
-- `list_topics`: Parameter: `channel_id`.
 
-## Assurance
-- **Logs**: Persistent logs are saved in `logs/telebot.log`.
-- **Tests**: `uv run pytest`
-- **Linting**: `uv run ruff check .`
+### Worker (batch all tasks from config.yaml)
+```bash
+uv run course-scout-worker
+```
+
+## Tests
+```bash
+uv run pytest
+uv run ruff check src/
+```

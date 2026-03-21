@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
-from telebot.domain.models import ChannelDigest
-from telebot.interfaces.cli.main import app
+from course_scout.domain.models import ChannelDigest
+from course_scout.interfaces.cli.main import app
 
 runner = CliRunner()
 
@@ -13,18 +13,17 @@ runner = CliRunner()
 class TestCLI(unittest.TestCase):
     def setUp(self):
         # Always mock Settings to avoid .env issues
-        self.patcher_settings = patch("telebot.interfaces.cli.main.Settings")
+        self.patcher_settings = patch("course_scout.interfaces.cli.main.Settings")
         self.mock_settings = self.patcher_settings.start()
         self.mock_settings.return_value.tg_api_id = 123
         self.mock_settings.return_value.tg_api_hash = "hash"
-        self.mock_settings.return_value.gemini_api_key = "key"
         self.mock_settings.return_value.session_path = "test.session"
 
     def tearDown(self):
         self.patcher_settings.stop()
 
-    @patch("telebot.interfaces.cli.main.GenerateDigestUseCase.execute", new_callable=AsyncMock)
-    @patch("telebot.interfaces.cli.main.PDFRenderer")
+    @patch("course_scout.interfaces.cli.main.GenerateDigestUseCase.execute", new_callable=AsyncMock)
+    @patch("course_scout.interfaces.cli.main.PDFRenderer")
     def test_digest_command_with_pdf(self, MockRenderer, mock_execute):
         # Setup mock execute return
         mock_digest = MagicMock(spec=ChannelDigest)
@@ -48,7 +47,7 @@ class TestCLI(unittest.TestCase):
         mock_execute.assert_called_once()
         mock_renderer_inst.render.assert_called_once()
 
-    @patch("telebot.interfaces.cli.main.TelethonScraper")
+    @patch("course_scout.interfaces.cli.main.TelethonScraper")
     def test_list_topics_command(self, MockScraper):
         mock_scraper_inst = MockScraper.return_value
         mock_scraper_inst.list_topics = AsyncMock(return_value=[{"id": 123, "title": "Test Topic"}])

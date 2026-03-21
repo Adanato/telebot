@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from telebot.domain.models import ChannelDigest, TelegramMessage
+from course_scout.domain.models import ChannelDigest, TelegramMessage
 
 
 def test_telegram_message_creation():

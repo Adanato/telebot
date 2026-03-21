@@ -1,17 +1,12 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
-import datetime
 
 # Import directly
-from telebot.interfaces.api.sse import (
-    resolve_channel_alias,
-    _resolve_topic_id,
-    handle_pdf_output,
-    _run_digest_background,
-    start_digest_generation,
+from course_scout.interfaces.api.sse import (
+    JOBS,
     check_task_status,
-    JOBS
+    handle_pdf_output,
+    resolve_channel_alias,
 )
 
 
@@ -19,13 +14,13 @@ class TestSSEInterface(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         JOBS.clear()
 
-    @patch("telebot.interfaces.api.sse.PDFRenderer")
-    @patch("telebot.interfaces.api.sse.TelegramClient")
-    @patch("telebot.interfaces.api.sse.settings")
+    @patch("course_scout.interfaces.api.sse.PDFRenderer")
+    @patch("course_scout.interfaces.api.sse.TelegramClient")
+    @patch("course_scout.interfaces.api.sse._get_settings")
     async def test_handle_pdf_output(self, mock_settings, MockClient, MockRenderer):
         mock_renderer_inst = MockRenderer.return_value
         mock_renderer_inst.render.return_value = "reports/test.pdf"
-        
+
         mock_client_inst = MockClient.return_value
         mock_client_inst.connect = AsyncMock()
         mock_client_inst.disconnect = AsyncMock()
@@ -34,7 +29,7 @@ class TestSSEInterface(unittest.IsolatedAsyncioTestCase):
         digest = MagicMock()
         # Call the imported function
         extra = await handle_pdf_output(digest, 123, "user1", "chan1")
-        
+
         self.assertIn("PDF Report generated", extra)
         mock_client_inst.send_file.assert_called_once()
 

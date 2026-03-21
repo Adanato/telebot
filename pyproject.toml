@@ -1,17 +1,13 @@
 [project]
-name = "telebot"
-version = "0.1.0"
-description = "Telegram Channel Summarizer Bot"
+name = "course-scout"
+version = "0.2.0"
+description = "Telegram art channel scanner and digest generator"
 readme = "README.md"
 authors = [{ name = "Adam", email = "adam@example.com" }]
 requires-python = ">=3.12"
 dependencies = [
-    "atomic-agents>=0.1.45",
     "fastapi>=0.128.0",
-    "google-api-core>=2.17.0",
-    "google-genai>=1.59.0",
     "httpx>=0.28.1",
-    "instructor>=1.14.4",
     "pydantic-settings>=2.7.1",
     "python-dotenv>=1.0.1",
     "tenacity>=8.2.3",
@@ -24,16 +20,15 @@ dependencies = [
     "jsonref>=1.1.0",
     "markdown2>=2.5.4",
     "markdown-pdf>=1.10",
-    "groq>=1.0.0",
     "mcp[cli]>=1.25.0",
     "PyYAML>=6.0.1",
-    "python-telegram-bot>=21.0.1",
+    "claude-agent-sdk>=0.1.50",
 ]
 
 [project.scripts]
-telebot = "telebot.interfaces.cli.main:app"
-telebot-worker = "telebot.application.worker:main"
-telebot-sse = "telebot.interfaces.api.sse:main"
+course-scout = "course_scout.interfaces.cli.main:app"
+course-scout-worker = "course_scout.application.worker:main"
+course-scout-sse = "course_scout.interfaces.api.sse:main"
 
 [dependency-groups]
 dev = [
@@ -47,7 +42,7 @@ dev = [
 ]
 
 [tool.importlinter]
-root_package = "telebot"
+root_package = "course_scout"
 
 [[tool.importlinter.contracts]]
 name = "Domain Driven Architecture Layers"
@@ -58,7 +53,7 @@ layers = [
     "infrastructure",
     "domain",
 ]
-containers = ["telebot"]
+containers = ["course_scout"]
 
 [tool.ruff]
 line-length = 100
@@ -94,7 +89,7 @@ typeCheckingMode = "standard"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--cov=src/telebot --cov-report=term-missing"
+addopts = "--cov=src/course_scout --cov-report=term-missing"
 
 [tool.coverage.report]
 fail_under = 80

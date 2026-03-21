@@ -3,8 +3,8 @@ import unittest
 from datetime import datetime
 from unittest.mock import patch
 
-from telebot.domain.models import ChannelDigest
-from telebot.infrastructure.reporting import PDFRenderer
+from course_scout.domain.models import ChannelDigest
+from course_scout.infrastructure.reporting import PDFRenderer
 
 
 class TestPDFRenderer(unittest.TestCase):
@@ -28,8 +28,8 @@ class TestPDFRenderer(unittest.TestCase):
             except OSError:
                 pass
 
-    @patch("telebot.infrastructure.reporting.MarkdownPdf")
-    @patch("telebot.infrastructure.reporting.Section")
+    @patch("course_scout.infrastructure.reporting.MarkdownPdf")
+    @patch("course_scout.infrastructure.reporting.Section")
     def test_render_success(self, MockSection, MockMarkdownPdf):
         mock_pdf = MockMarkdownPdf.return_value
         filename = "test_report.pdf"
@@ -44,7 +44,7 @@ class TestPDFRenderer(unittest.TestCase):
         # re.split should find them.
         self.assertGreaterEqual(mock_pdf.add_section.call_count, 1)
 
-    @patch("telebot.infrastructure.reporting.MarkdownPdf")
+    @patch("course_scout.infrastructure.reporting.MarkdownPdf")
     def test_render_error_handling(self, MockMarkdownPdf):
         mock_pdf = MockMarkdownPdf.return_value
         mock_pdf.save.side_effect = Exception("Disk Full")
@@ -56,7 +56,7 @@ class TestPDFRenderer(unittest.TestCase):
 
     def test_section_splitting_logic(self):
         # Test the regex splitting directly via render_from_markdown with a patch
-        with patch("telebot.infrastructure.reporting.MarkdownPdf") as MockPdf:
+        with patch("course_scout.infrastructure.reporting.MarkdownPdf") as MockPdf:
             mock_pdf = MockPdf.return_value
             text = "# Header 1\nContent 1\n## Header 2\nContent 2"
             self.renderer.render_from_markdown(text, "test.pdf")

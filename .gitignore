@@ -34,3 +34,4 @@ data/daily_topics.json
 .ruff_cache/
 .import_linter_cache/
 .importlinter
+data/*.db

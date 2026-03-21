@@ -2,8 +2,8 @@ import unittest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
-from telebot.application.digest import GenerateDigestUseCase
-from telebot.domain.models import ChannelDigest, TelegramMessage
+from course_scout.application.digest import GenerateDigestUseCase
+from course_scout.domain.models import ChannelDigest, TelegramMessage
 
 
 class TestGenerateDigestUseCase(unittest.IsolatedAsyncioTestCase):

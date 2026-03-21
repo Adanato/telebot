@@ -1,58 +1,284 @@
-# Telebot Configuration
- 
-# Global Settings
+# Course Scout Configuration
+
 global:
   lookback_days: 1
-  report_format: "pdf" # choices: markdown, pdf
-  auto_start: true
- 
-# List of summarization tasks
+  report_format: "pdf"
+  timezone: "America/New_York"
+  window_mode: "rolling"
+
+# Default agent config (overridable per task)
+agent_defaults:
+  summarizer_model: "claude-sonnet-4-6"
+  chunk_size: 25
+  max_messages: 100
+  thinking: "adaptive"
+  effort: "medium"
+
+# ── Prompt Templates ──
+# Referenced by tasks via system_prompt field.
+# Tasks without system_prompt use the default prompt in agents.py.
+
+prompts:
+  course_requests: |
+    You summarize course REQUEST threads from art community Telegram channels.
+
+    For each request, extract:
+    - Course title (exact, as written)
+    - Instructor/artist name
+    - Platform (Coloso, Domestika, Schoolism, Class 101, Wingfox, Patreon, etc.)
+    - Course URL if shared
+    - Status: UNFULFILLED (no reply with link), FULFILLED (someone shared it), or DISCUSSING
+    - Whether it's tagged for a group buy
+
+    INTEREST FILTER — prioritize:
+    - 2D illustration, character design, concept art, anatomy, figure drawing
+    - Color theory, lighting, rendering, digital painting
+    - Asian artists, anime/manga styles
+    De-prioritize: 3D, photography, UI/UX, motion graphics (still include, mark low priority)
+
+    RULES:
+    - Every item MUST reference a specific message ID
+    - Do not hallucinate links not present in the input
+    - Return valid JSON matching the schema
+
+  file_sharing: |
+    You summarize FILE SHARING threads from art community Telegram channels.
+
+    For each shared file/course, extract:
+    - Course/file title (translate Chinese/Korean/Japanese titles to English, keep original in parentheses)
+    - Instructor/artist name
+    - Host platform (Baidu Pan, Quark Pan, Google Drive, Telegram direct, Mega, etc.)
+    - Download password if mentioned (PRESERVE EXACTLY — e.g., "pwd: wf6g")
+    - File format notes (split archives, PDF handouts, video quality)
+    - Re-upload requests from members who can't access the host
+
+    INTEREST FILTER — prioritize:
+    - 2D illustration, character design, anatomy, color theory courses
+    - Asian artist courses (Chinese, Korean, Japanese)
+    De-prioritize: 3D, C4D, Blender, game assets (still include, mark low priority)
+
+    RULES:
+    - Every item MUST reference a specific message ID
+    - Preserve ALL passwords and access codes exactly as written
+    - Translate non-English titles but keep originals
+    - Do not hallucinate links not present in the input
+    - Return valid JSON matching the schema
+
+  language_chat: |
+    You summarize MULTILINGUAL CHAT from art community Telegram channels.
+    Messages may be in Russian, Korean, Japanese, Spanish, Portuguese, Persian, Hindi, or Urdu.
+
+    Focus on extracting:
+    - Course recommendations or reviews mentioned in conversation
+    - Shared resources (spreadsheets, guides, tool links)
+    - Group buy discussions or interest checks
+    - Technical tips (extraction guides, subtitle info, tool recommendations)
+    - New course drops or availability announcements
+
+    Translate all content to English. Preserve original course/artist names.
+    Skip: casual greetings, off-topic gaming/meme discussions, personal chat.
+
+    RULES:
+    - Every item MUST reference a specific message ID
+    - Do not hallucinate links not present in the input
+    - Return valid JSON matching the schema
+
+  discussion_lounge: |
+    You summarize ART DISCUSSION threads from community Telegram channels.
+
+    Focus on extracting:
+    - Art technique discussions (color theory, composition, rendering methods)
+    - Artist/style identification requests and answers
+    - Course reviews and recommendations from members
+    - Shared artwork with community feedback
+    - Tool/software discussions (CSP, Photoshop, Procreate, tablets)
+    - Reference sharing (Instagram reels, ArtStation, Pinterest boards)
+
+    INTEREST FILTER — prioritize:
+    - 2D illustration techniques, character design workflows
+    - Asian artist influences, anime/manga style analysis
+    - Color and lighting technique breakdowns
+    De-prioritize: 3D, photography, UI/UX
+
+    RULES:
+    - Every item MUST reference a specific message ID
+    - Preserve shared reference URLs exactly
+    - Do not hallucinate links not present in the input
+    - Return valid JSON matching the schema
+
+  course_review: |
+    You summarize COURSE REVIEW threads from art community Telegram channels.
+
+    For each review, extract:
+    - Course title and instructor
+    - Platform (Coloso, Domestika, etc.)
+    - Rating or sentiment (positive, mixed, negative)
+    - Key takeaways mentioned by reviewers
+    - Skill level suitability (beginner, intermediate, advanced)
+    - Any shared project work or portfolio pieces from the course
+
+    Prioritize courses about 2D illustration, character design, color theory, anatomy.
+
+    RULES:
+    - Every item MUST reference a specific message ID
+    - Do not hallucinate links not present in the input
+    - Return valid JSON matching the schema
+
 tasks:
-  - name: "Coloso Courses"
-    channel_id: -1001603660516 # CourseBusters
-    topic_id: 2438
-    actions:
-      - "summarize"
-      - "notify"
- 
+  # ── Discussion Lounges ──
   - name: "Asian Artists Discussion"
-    channel_id: -1001603660516 # CourseBusters
+    channel_id: -1001603660516
     topic_id: 166550
-    actions:
-      - "summarize"
-      - "notify"
- 
+    system_prompt: "discussion_lounge"
+    actions: ["summarize"]
+
   - name: "2D Artists Lounge"
-    channel_id: -1001603660516 # CourseBusters
+    channel_id: -1001603660516
     topic_id: 3077
-    actions:
-      - "summarize"
-      - "notify"
- 
-  - name: "Members Collaboration"
-    channel_id: -1001603660516 # CourseBusters
-    topic_id: 3018
-    actions:
-      - "summarize"
-      - "notify"
- 
-  - name: "Members Collab - All courses"
-    channel_id: -1001603660516 # CourseBusters
-    topic_id: 30478
-    actions:
-      - "summarize"
-      - "notify"
- 
+    system_prompt: "discussion_lounge"
+    actions: ["summarize"]
+
+  - name: "Webcomic Lounge"
+    channel_id: -1001603660516
+    topic_id: 106529
+    system_prompt: "discussion_lounge"
+    actions: ["summarize"]
+
+  - name: "Course Review"
+    channel_id: -1001603660516
+    topic_id: 523906
+    system_prompt: "course_review"
+    actions: ["summarize"]
+
+  # ── Language Discussions ──
+  - name: "Russian Chat"
+    channel_id: -1001603660516
+    topic_id: 317108
+    system_prompt: "language_chat"
+    chunk_size: 50
+    effort: "low"
+    actions: ["summarize"]
+
+  - name: "Korean Chat"
+    channel_id: -1001603660516
+    topic_id: 73872
+    system_prompt: "language_chat"
+    actions: ["summarize"]
+
+  - name: "Japanese Chat"
+    channel_id: -1001603660516
+    topic_id: 305172
+    system_prompt: "language_chat"
+    actions: ["summarize"]
+
+  - name: "Spanish & Portuguese Chat"
+    channel_id: -1001603660516
+    topic_id: 15735
+    system_prompt: "language_chat"
+    actions: ["summarize"]
+
+  - name: "Persian Chat"
+    channel_id: -1001603660516
+    topic_id: 278310
+    system_prompt: "language_chat"
+    actions: ["summarize"]
+
+  - name: "Hindi/Urdu Chat"
+    channel_id: -1001603660516
+    topic_id: 14280
+    system_prompt: "language_chat"
+    actions: ["summarize"]
+
+  # ── Course Requests ──
+  - name: "Coloso Requests"
+    channel_id: -1001603660516
+    topic_id: 3028
+    system_prompt: "course_requests"
+    effort: "high"
+    actions: ["summarize"]
+
+  - name: "2D Related Requests"
+    channel_id: -1001603660516
+    topic_id: 381
+    system_prompt: "course_requests"
+    actions: ["summarize"]
+
+  - name: "Animation Requests"
+    channel_id: -1001603660516
+    topic_id: 394
+    system_prompt: "course_requests"
+    actions: ["summarize"]
+
+  - name: "Domestika Requests"
+    channel_id: -1001603660516
+    topic_id: 3361
+    system_prompt: "course_requests"
+    actions: ["summarize"]
+
+  - name: "Class 101 Requests"
+    channel_id: -1001603660516
+    topic_id: 83
+    system_prompt: "course_requests"
+    actions: ["summarize"]
+
+  - name: "Wingfox/Yiihuu Requests"
+    channel_id: -1001603660516
+    topic_id: 8500
+    system_prompt: "course_requests"
+    actions: ["summarize"]
+
+  - name: "Patreon Requests"
+    channel_id: -1001603660516
+    topic_id: 737
+    system_prompt: "course_requests"
+    actions: ["summarize"]
+
+  - name: "ALL REQUESTS"
+    channel_id: -1001603660516
+    topic_id: 925
+    system_prompt: "course_requests"
+    actions: ["summarize"]
+
+  # ── File Sources ──
   - name: "Pan Baidu Download Request"
-    channel_id: -1001603660516 # CourseBusters
+    channel_id: -1001603660516
     topic_id: 10683
-    actions:
-      - "summarize"
-      - "notify"
- 
-  - name: "Pan Baidu Files"
-    channel_id: -1001603660516 # CourseBusters
-    topic_id: 10686
-    actions:
-      - "summarize"
-      - "notify"
+    system_prompt: "file_sharing"
+    effort: "high"
+    actions: ["summarize"]
+
+  - name: "Bilibili Download Request"
+    channel_id: -1001603660516
+    topic_id: 46120
+    system_prompt: "file_sharing"
+    actions: ["summarize"]
+
+  - name: "Illustration & Painting Courses"
+    channel_id: -1001603660516
+    topic_id: 227044
+    system_prompt: "file_sharing"
+    actions: ["summarize"]
+
+  - name: "Underpaint Courses"
+    channel_id: -1001603660516
+    topic_id: 405145
+    system_prompt: "file_sharing"
+    actions: ["summarize"]
+
+  - name: "Members Collaboration"
+    channel_id: -1001603660516
+    topic_id: 3018
+    system_prompt: "file_sharing"
+    actions: ["summarize"]
+
+  - name: "Group-buy Chit Chat"
+    channel_id: -1001603660516
+    topic_id: 87
+    system_prompt: "discussion_lounge"
+    actions: ["summarize"]
+
+  # ── External Channel ──
+  - name: "GBUYB"
+    channel_id: -1002588334381
+    system_prompt: "course_requests"
+    actions: ["summarize"]

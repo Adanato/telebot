@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from telebot.infrastructure.telegram import TelethonScraper
+from course_scout.infrastructure.telegram import TelethonScraper
 
 
 class TestTelethonScraper(unittest.IsolatedAsyncioTestCase):
@@ -12,7 +12,7 @@ class TestTelethonScraper(unittest.IsolatedAsyncioTestCase):
         self.session_path = "test.session"
         self.scraper = TelethonScraper(self.api_id, self.api_hash, self.session_path)
 
-    @patch("telebot.infrastructure.telegram.TelegramClient")
+    @patch("course_scout.infrastructure.telegram.TelegramClient")
     async def test_get_messages_flow(self, MockClient):
         mock_inst = MockClient.return_value
         mock_inst.connect = AsyncMock()
@@ -43,7 +43,7 @@ class TestTelethonScraper(unittest.IsolatedAsyncioTestCase):
         mock_inst.connect.assert_called_once()
         mock_inst.disconnect.assert_called_once()
 
-    @patch("telebot.infrastructure.telegram.TelegramClient")
+    @patch("course_scout.infrastructure.telegram.TelegramClient")
     @patch("os.path.exists")
     async def test_get_messages_with_image(self, mock_exists, MockClient):
         mock_exists.return_value = False
@@ -77,7 +77,7 @@ class TestTelethonScraper(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(messages[0].local_media_path, "media_cache/media_2.jpg")
         mock_message.download_media.assert_called_once()
 
-    @patch("telebot.infrastructure.telegram.TelegramClient")
+    @patch("course_scout.infrastructure.telegram.TelegramClient")
     async def test_get_messages_not_authorized(self, MockClient):
         mock_inst = MockClient.return_value
         mock_inst.connect = AsyncMock()
