@@ -37,3 +37,4 @@ data/daily_topics.json
 data/*.db
 docker-compose.local.yml
 test.yaml
+data/reports.db
