@@ -35,3 +35,5 @@ data/daily_topics.json
 .import_linter_cache/
 .importlinter
 data/*.db
+docker-compose.local.yml
+test.yaml
