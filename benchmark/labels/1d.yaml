@@ -1,0 +1,353 @@
+samples:
+  s0000:
+    expected:
+    - title: Shape breakdown methodology in figure/character design
+      category: discussion
+      priority: MEDIUM
+      status: null
+      description: 'Full breakdown vs rough guidelines approach. Recommended: big→medium→small workflow.
+        Flexibility depends on practice goals and refinement stage needs. Eyeballing proportions essent'
+    - title: Compressed Krenz Zero course version
+      category: request
+      priority: LOW
+      status: DISCUSSING
+      description: Requested compressed download. Being prepared now, targeting ~20GB size, estimated
+        1 week to completion. Currently unzipped version available.
+    - title: YouTube membership access for art tutorials
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Seeking affordable access to YouTube premium for additional tutorial videos. Financial
+        constraints preventing purchase.
+    candidate_count: 3
+    source: autolabel
+  s0001:
+    expected:
+    - title: Lazy Nezumi smoothing for line stability
+      category: discussion
+      priority: null
+      status: null
+      description: Tool fix for line thickness increasing at stroke end. Enable smoothing on subtle setting
+        for smooth, consistent lines.
+    - title: Figure proportion and anatomy critique
+      category: discussion
+      priority: null
+      status: null
+      description: Artist requested feedback on body proportions. Community member offered to provide
+        detailed critique discussion.
+    - title: Watercolor course recommendation
+      category: request
+      priority: null
+      status: UNFULFILLED
+      description: Artist seeking structured watercolor course. Community suggested YouTube tutorials
+        for fundamentals.
+    candidate_count: 3
+    source: autolabel
+  s0002:
+    expected:
+    - title: Poor Folk (Бедные люди)
+      category: discussion
+      priority: LOW
+      status: null
+      description: Dostoevsky's first novel recommended by jojo95xp in a discussion thread.
+    candidate_count: 1
+    source: autolabel
+  s0003:
+    expected:
+    - title: ZBrush Sculpketch Tutorial Series
+      category: course
+      priority: HIGH
+      status: UNFULFILLED
+      description: Stylized character sculpting course by Rishikesh Nandlaskar. Marketplace link provided.
+        Free version not yet circulated in community. Artist's work previews available on referenced
+    - title: Stylization Techniques (YouTube)
+      category: course
+      priority: null
+      status: null
+      description: YouTube tutorials on stylization and character work. Shared as alternative resources
+        while awaiting primary course.
+    candidate_count: 2
+    source: autolabel
+  s0004:
+    expected:
+    - title: Creating Environments, Inking Phase III, Structural Figure Drawing
+      category: request
+      priority: MEDIUM
+      status: DISCUSSING
+      description: Missing from group's collection. Member proposing $79/month subscription + YouTube
+        download tool (tube digger) to acquire and share with group.
+    - title: Smart-Rigging
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Looking for specific course.
+    - title: 2D Effects Animation Tutorials
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Request for quality tutorials on 2D effects animation.
+    candidate_count: 3
+    source: autolabel
+  s0005:
+    expected:
+    - title: Proko Drawing Basics - Value & Edge courses
+      category: request
+      priority: HIGH
+      status: UNFULFILLED
+      description: Completed Proko Drawing Basics through lesson 135. Seeking intermediate courses on
+        value and edge theory—open to any platform with clearer explanations.
+    - title: Rajiv Mehta Gen AI Level 2
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Request for access/share of Gen AI Level 2 course.
+    candidate_count: 2
+    source: autolabel
+  s0006:
+    expected:
+    - title: Motion graphics that allow you to freely manipulate and perfect elements
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: VFX/motion design fundamentals.
+    - title: Bring Your Ideas to Life with Motion Graphics
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Motion graphics production course.
+    - title: Coloring and Designing Male Characters with Unique Moods
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Character design and illustration. Asian artist.
+    - title: Guide to Attractive Male Character Illustrations, Ready To Use Characters
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Character design and reference assets. Coloring techniques.
+    - title: Expressive 3D character modeling using low-poly
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Low-poly 3D character sculpting.
+    - title: Ultimate Electrical Power System Engineering Masterclass
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Electrical engineering. Off-topic.
+    - title: Uploading shared courses to Members Collaboration
+      category: discussion
+      priority: null
+      status: null
+      description: Discussion on formatting and procedures for torrent uploads. Admin coordination.
+    - title: Live2D animator course (Hakumei)
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Live2D animation tool course.
+    - title: Course from CGPEERS (uploaded to group)
+      category: file
+      priority: HIGH
+      status: FULFILLED
+      description: Available on t.me link. Moderator approved share. Inquiry about subtitle inclusion.
+    - title: Portraits that reveal the character's story
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Character portrait illustration and narrative design.
+    - title: Sculpting a Female Figure with Natural Clothing Folds
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: 3D character sculpture with fabric anatomy.
+    candidate_count: 11
+    source: autolabel
+  s0007:
+    expected:
+    - title: Hand drawn typographic portrait
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Course request. Domestika storefront referenced. Telegram channel offered as potential
+        source.
+    - title: '[Telegram channel - context unclear]'
+      category: file
+      priority: LOW
+      status: null
+      description: Channel shared in separate thread context (reply to message 567711). Relevance/content
+        unclear without original thread.
+    candidate_count: 2
+    source: autolabel
+  s0008:
+    expected:
+    - title: A complete tutorial on modeling, texturing, and rendering the UE5 FPS game scene 'European
+        Town'
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: UE5 FPS game scene. Modeling, texturing, rendering workflow.
+    - title: 'UE5 Stylized Scene Creation: The Complete Workflow of Modeling, Materialization, Rendering,
+        and Animation for ''Fantasy Wonderland'''
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: 'UE5 stylized scene. Complete workflow: modeling, materialization, rendering, animation.'
+    candidate_count: 2
+    source: autolabel
+  s0009:
+    expected:
+    - title: The Complete Beginners Academy
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Blender fundamentals from Andrew Price (Blender Guru).
+    - title: Make a Game with Unity DOTS
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Complete 27-hour course. Free version available but looking for full version.
+    - title: Hartsref channel reference
+      category: discussion
+      priority: null
+      status: null
+      description: 'Resource pointer: Channel has multiple works from specific artist. Unclear if exact
+        course available there.'
+    - title: Kemono Patreon archive download query
+      category: request
+      priority: LOW
+      status: DISCUSSING
+      description: User asking how to download content from kemono.cr Patreon archive.
+    - title: Realistic Portrait Drawing
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Portrait drawing fundamentals.
+    - title: City Pop Anime Girl Blender Rig
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: 3D character rig asset named Amethyst.
+    - title: Creating Dynamic 2D Character Animations
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Character animation for 2D. Asian artist.
+    - title: Foundation Art School
+      category: request
+      priority: null
+      status: UNFULFILLED
+      description: Link and details not provided.
+    - title: The Ultimate Sketching Course
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: No platform or link provided.
+    - title: 作画用胴体モデル配布 (Body Model Distribution for Drawing)
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Unified body model for anime/manga character illustration. Japanese creator.
+    - title: Mathematical Thinking
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Mathematics course. Off-topic for art community.
+    - title: Visual Development & Production Design with Armand Serrano
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Concept art and production design. Preview video included.
+    - title: Community moderation notice
+      category: announcement
+      priority: null
+      status: null
+      description: No direct messages. Must share resources with group or not at all. Violations result
+        in ban.
+    - title: Lighting and Atmosphere to Create Aesthetic Character Art
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Character art with focus on lighting. Asian artist.
+    - title: Refined Lines. Expanded Colors. Take Your Art Further.
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: 2D illustration course. Asian artist.
+    - title: Ultimate Electrical Power System Engineering Masterclass
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Engineering course. Off-topic.
+    - title: 'Control Systems: Simplifying Control System Engineering'
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Engineering course. Off-topic.
+    - title: Dense, Pop Motion Graphics in Shapes
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Motion graphics fundamentals. Asian artist.
+    - title: Portraits that Reveal the Character's Story
+      category: request
+      priority: MEDIUM
+      status: UNFULFILLED
+      description: Character portrait illustration. Asian artist.
+    - title: Structural Figure Drawing
+      category: request
+      priority: HIGH
+      status: UNFULFILLED
+      description: Anatomy and figure drawing fundamentals.
+    - title: Courses or brushes from Dariusz Kieliszek
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Query about available courses or brush sets. Creator unknown if multiple available.
+    candidate_count: 21
+    source: autolabel
+  s0010:
+    expected:
+    - title: Douyin Live Stream Extra Class Videos
+      category: request
+      priority: MEDIUM
+      status: FULFILLED
+      description: Live stream QnA and mentorship session from Mr. Yokai. Baidu Pan download with password
+        provided in link.
+    candidate_count: 1
+    source: autolabel
+  s0011:
+    expected:
+    - title: Goo Physics
+      category: course
+      priority: MEDIUM
+      status: null
+      description: Physics/procedural content tool. Latest product from Dilongoo.
+    - title: WLOP Painting Tutorial 2025-2026 1.1-2.5
+      category: course
+      priority: HIGH
+      status: null
+      description: Digital painting tutorial series (modules 1.1-2.5, missing 2.4). Chinese language with
+        English & Chinese subtitles.
+    - title: Watts Atelier – Inking Phase 3
+      category: course
+      priority: HIGH
+      status: null
+      description: Figure drawing/inking course phase 3.
+    candidate_count: 3
+    source: autolabel
+  s0012:
+    expected:
+    - title: 'Watts Atelier: Creating Environments and Structural Figure Drawing'
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Monthly subscription cost-share proposal to download courses via tube digger; seeking
+        split payment from community members
+    - title: 'Coloso: MAF and Hakei courses'
+      category: request
+      priority: LOW
+      status: UNFULFILLED
+      description: Group buy proposal declined by admins—community policy prohibits individual organizers.
+        Courses reported as "in consideration" for official acquisition through unspecified process
+    candidate_count: 2
+    source: autolabel

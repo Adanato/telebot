@@ -1,0 +1,38 @@
+# Benchmark sweep config.
+#
+# Runs every entry in `configs` against the same fixture, sharing a single
+# global semaphore so aggregate in-flight requests never exceed
+# `global_concurrency`. This respects Anthropic's Max plan guidance (3–5 parallel)
+# while letting multiple model configs overlap for wall-clock speedup.
+#
+# Usage:
+#   uv run python benchmark/bench_sweep.py --config configs/default.yaml --fixture 1d
+
+# Hard cap on simultaneous API requests across ALL configs in this sweep.
+# Max plan guidance: 3–5. Do not exceed 5 unless you have a direct API key.
+global_concurrency: 5
+
+# Which bench to run for each config. Supports: "categorize" (stage 1) or
+# "preference" (stage 3). Preference requires preference-labels to exist first.
+bench: categorize
+
+configs:
+  - name: haiku-low
+    model: claude-haiku-4-5
+    effort: low
+
+  - name: haiku-medium
+    model: claude-haiku-4-5
+    effort: medium
+
+  - name: haiku-high
+    model: claude-haiku-4-5
+    effort: high
+
+  - name: sonnet-low
+    model: claude-sonnet-4-6
+    effort: low
+
+  - name: sonnet-medium
+    model: claude-sonnet-4-6
+    effort: medium

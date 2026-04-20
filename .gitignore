@@ -38,3 +38,6 @@ data/*.db
 docker-compose.local.yml
 test.yaml
 data/reports.db
+
+# Benchmark — version fixtures + labels, ignore transient predictions/reports
+benchmark/results/
