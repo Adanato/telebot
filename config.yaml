@@ -9,7 +9,7 @@ global:
 # Default agent config (overridable per task)
 agent_defaults:
   summarizer_model: "claude-sonnet-4-6"
-  chunk_size: 25
+  chunk_size: 10000  # no within-topic slicing — one call sees the whole topic's time window
   max_messages: 100
   thinking: "adaptive"
   effort: "medium"
@@ -20,32 +20,38 @@ agent_defaults:
 
 prompts:
   course_requests: |
-    Extract items from art community COURSE REQUEST threads.
-    Telegraphic style — no narrative, just structured data.
+    Extract items from a REQUEST channel. EVERY item MUST be category=request.
+    This channel's sole purpose is requests — do not emit file, course, discussion,
+    or announcement items. If someone shares a download link in reply to a request,
+    the REQUEST itself becomes FULFILLED (still category=request).
 
-    ITEM TYPES:
-    - category=request: someone asking for a course. Set instructor, platform, status.
-      Priority: LOW if unfulfilled. MEDIUM if fulfilled with link or group buy organizing.
-    - category=file: someone sharing a download link in reply. Set instructor, platform, password, status=FULFILLED.
-      Priority: HIGH.
-    - category=discussion: meta-conversation about availability, alternatives. Priority: LOW.
+    OUTPUT SCHEMA (single allowed category):
+    - category=request: a requested course/resource. Always.
+      status=FULFILLED  → someone replied with an actual download link (mega, drive, pan baidu, t.me file, .zip, torrent)
+      status=DISCUSSING → reply is a storefront link, in-progress, or community searching
+      status=UNFULFILLED → no reply, or explicitly unavailable
 
-    Note group buy tags. Description: 1 line — what the course covers.
+    FIELDS: instructor, platform, status. Preserve download passwords if a link is shared.
+    Description: 1 line — what the course covers. No narrative.
 
     RULES:
     - msg_ids required for every item
     - Do not hallucinate links
+    - Do not emit non-request categories under any circumstance
     - Return valid JSON matching the schema
 
   file_sharing: |
-    Extract items from art community FILE SHARING threads.
-    Telegraphic style — no narrative, just structured data.
+    Extract items from a FILE SHARING channel. Primary output is category=file
+    (actual downloads). Occasional category=discussion for access help, format
+    questions, or extraction problems. DO NOT emit category=request — that's for
+    request channels; re-upload asks are noise here.
 
-    ITEM TYPES:
-    - category=file: shared download. Set instructor, platform (Baidu Pan, Quark Pan, Mega, Telegram),
-      password (PRESERVE EXACTLY), status=FULFILLED. Priority: HIGH.
-    - category=request: re-upload request with no resolution. Priority: LOW.
-    - category=discussion: access help, format questions. Priority: LOW.
+    OUTPUT SCHEMA (two allowed categories):
+    - category=file: shared download.
+      FIELDS: instructor, platform (Baidu Pan, Quark Pan, Mega, Telegram, Google Drive),
+              password (PRESERVE EXACTLY), status=FULFILLED
+    - category=discussion: access help, format questions, extraction troubleshooting.
+      FIELDS: instructor (if about a specific artist/course)
 
     Translate Chinese/Korean/Japanese titles to English, keep original in parentheses.
     Note: file format, split archives, video quality, subtitle availability.
@@ -54,6 +60,7 @@ prompts:
     - msg_ids required for every item
     - Preserve ALL passwords and access codes exactly
     - Do not hallucinate links
+    - Do not emit request, course, or announcement categories
     - Return valid JSON matching the schema
 
   language_chat: |
@@ -61,14 +68,35 @@ prompts:
     Messages may be in Russian, Korean, Japanese, Spanish, Portuguese, Persian, Hindi, or Urdu.
     Telegraphic style — no narrative, just structured data. Translate everything to English.
 
-    ITEM TYPES:
-    - category=file: shared download link/resource. Set instructor, platform, password. Priority: HIGH.
-    - category=course: course review or recommendation. Set instructor, platform. Priority: MEDIUM.
-    - category=discussion: technique tip, tool comparison. Set instructor if relevant. Priority: MEDIUM.
-    - category=request: someone asking for something, no resolution. Priority: LOW.
-    - category=announcement: event, stream, new course drop. Priority: MEDIUM.
+    DECISION TREE (apply in this exact order — first match wins):
 
-    Skip casual chat, greetings, memes, off-topic gaming entirely.
+    1. Does the message ASK for something the user does not have?
+       → category=request. Set status=UNFULFILLED unless someone replied with a download link.
+       Examples: "anyone got X?", "looking for X", "where can I find X?", "needs X please"
+
+    2. Did someone share an actual download/share LINK (mega/drive/baidu/t.me file/.zip)?
+       → category=file. Set status=FULFILLED.
+
+    3. Is the message a course REVIEW with verdict (good/bad/quality assessment)?
+       → category=course. Set instructor, platform.
+       Examples: "Krenz is great for color", "X course is too slow", "Y is overrated"
+       NOT just naming a course in passing — must contain a judgment.
+
+    4. Is the thread a TECHNIQUE discussion, tool comparison, or workflow tip?
+       → category=discussion. Examples: "use AO layer to test grayscale",
+       "Sai vs CSP for brushes", "how to render skin"
+
+    5. Is it news, event, or new release announcement?
+       → category=announcement.
+
+    6. Otherwise → skip (greeting, meme, off-topic gaming, social chat).
+
+    DISAMBIGUATION:
+    - "X is a great course" alone = category=course (review)
+    - "Does anyone have X?" with reply "X is great" = category=request, NOT course
+      (the original act is asking, not reviewing)
+    - "Here's a tip from X course" = category=discussion (technique), not course
+    - Bare course name in passing with no verdict = SKIP (not actionable)
 
     RULES:
     - msg_ids required for every item
@@ -77,39 +105,42 @@ prompts:
     - Return valid JSON matching the schema
 
   discussion_lounge: |
-    Extract items from art DISCUSSION threads.
-    Telegraphic style — no narrative, just structured data.
+    Extract items from a DISCUSSION lounge. Primary output is category=discussion
+    (technique breakdowns, tool comparisons, style analysis). Also allowed:
+    category=course (review/recommendation mentioned) and category=file (shared
+    resource). DO NOT emit category=request — unanswered questions are noise;
+    extract only if the thread produced a real answer/resource.
 
-    ITEM TYPES:
+    OUTPUT SCHEMA (three allowed categories):
     - category=discussion: technique breakdown, tool comparison, style analysis.
-      Set instructor if about a specific artist/method. Priority: MEDIUM.
-    - category=course: course review or recommendation mentioned in conversation.
-      Set instructor, platform. Priority: MEDIUM if verdict given, LOW if just a mention.
+      FIELDS: instructor (if about a specific artist/method)
+    - category=course: course review or recommendation in conversation.
+      FIELDS: instructor, platform, status (DISCUSSING/FULFILLED)
     - category=file: shared resource (spreadsheet, reference, brush pack).
-      Set platform. Priority: HIGH if downloadable.
-    - category=request: someone asking a question with no answer. Priority: LOW.
+      FIELDS: platform, password, status=FULFILLED
 
-    Skip: casual greetings, memes, reactions without substance.
+    Skip: casual greetings, memes, reactions without substance, pure social chat.
 
     RULES:
     - msg_ids required for every item
     - Preserve shared reference URLs exactly
     - Do not hallucinate links
+    - Do not emit request or announcement categories
     - Return valid JSON matching the schema
 
   course_review: |
     Extract COURSE REVIEWS from art community Telegram messages.
     Telegraphic style — no narrative, just structured data.
 
-    ITEM TYPES:
-    - category=course: the review itself. Set instructor, platform, priority.
+    OUTPUT SCHEMA (two allowed categories):
+    - category=course: the review itself. FIELDS: instructor, platform.
       Description: verdict, skill level, key takeaways.
-      Priority: HIGH if detailed review with clear verdict. MEDIUM if brief opinion.
-    - category=discussion: debate about course quality. Set instructor. Priority: MEDIUM.
+    - category=discussion: debate about course quality. FIELDS: instructor.
 
     RULES:
     - msg_ids required for every item
     - Do not hallucinate links
+    - Do not emit file, request, or announcement categories
     - Return valid JSON matching the schema
 
 tasks:
@@ -143,7 +174,7 @@ tasks:
     channel_id: -1001603660516
     topic_id: 317108
     system_prompt: "language_chat"
-    chunk_size: 50
+    chunk_size: 10000
     effort: "low"
     actions: ["summarize"]
 
@@ -246,14 +277,14 @@ tasks:
   - name: "Pan Baidu Download Request"
     channel_id: -1001603660516
     topic_id: 10683
-    system_prompt: "file_sharing"
+    system_prompt: "course_requests"
     effort: "high"
     actions: ["summarize"]
 
   - name: "Bilibili Download Request"
     channel_id: -1001603660516
     topic_id: 46120
-    system_prompt: "file_sharing"
+    system_prompt: "course_requests"
     actions: ["summarize"]
 
   - name: "Illustration & Painting Courses"

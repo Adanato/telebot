@@ -249,25 +249,47 @@ Just facts: what it is, what's useful, actionable details.
 ITEM TYPES (set category to pick the right schema):
 
   course — A course recommendation, review, or shared course.
-    Fields: instructor, platform, status, priority, password (if download).
-    Priority: HIGH if downloadable with link. MEDIUM if review/recommendation. LOW if just a mention.
+    Fields: instructor, platform, status, password (if download).
 
   file — A shared file, archive, or download link.
-    Fields: instructor, platform, status, priority, password.
-    Priority: HIGH if working download link. MEDIUM if partial/needs re-upload. LOW if broken/inaccessible.
+    Fields: instructor, platform, status, password.
+    NOTE: only classify as `file` if there is an actual download/share link
+    (see FULFILLMENT RULE below). A bare storefront link is NOT a file share —
+    that's a `course` mention or a `request`.
 
   discussion — A technique discussion, debate, or tool comparison.
-    Fields: instructor (if about a specific artist/method), priority.
+    Fields: instructor (if about a specific artist/method).
     No platform/status/password — these are conversations, not resources.
-    Priority: MEDIUM if concrete technique tips or verdicts. LOW if vague chat.
 
-  request — Someone asking for a course/resource (no download shared).
-    Fields: instructor, platform, status (FULFILLED/UNFULFILLED/DISCUSSING), priority.
-    Priority: LOW for unfulfilled requests (no actionable value). MEDIUM if fulfilled with link.
+  request — Someone asking for a course/resource.
+    Fields: instructor, platform, status (FULFILLED/UNFULFILLED/DISCUSSING).
+
+FULFILLMENT RULE (CRITICAL):
+A request is FULFILLED ONLY if someone shared an actual download/share link
+to the course files. A link to the official marketplace where you'd BUY the
+course is NOT fulfillment — it's a reference to what's being requested.
+
+  DOWNLOAD/SHARE links (FULFILLED):
+    - mega.nz, mediafire, drive.google.com, dropbox, 1drv.ms
+    - pan.baidu.com, aliyundrive, 123pan, weiyun
+    - t.me/c/... links pointing to files/archives inside the group
+    - Direct .zip / .rar / .7z / .part01 URLs
+    - Magnet/torrent links
+
+  STOREFRONT/REFERENCE links (NOT fulfillment — keep as UNFULFILLED):
+    - coloso.global, coloso.jp, coloso.co.kr (Coloso purchase pages)
+    - proko.com/course/... (Proko store)
+    - udemy.com, skillshare.com, domestika.org, class101
+    - gumroad.com, patreon.com, artstation.com/marketplace
+    - conceptdesignacad.com, newmastersacademy.org
+    - The artist's own shop (schoolism, etc.)
+
+If the ONLY link attached to a request is a storefront link, status must be
+UNFULFILLED. Mark FULFILLED only when a genuine download/share link appears
+in the same message or reply chain.
 
   announcement — Community news, event, or moderation notice.
-    Fields: instructor (optional), priority.
-    Priority: MEDIUM if relevant event. LOW if housekeeping.
+    Fields: instructor (optional).
 
 INTEREST FILTER:
 Prioritize: 2D illustration, character design, concept art, anatomy, figure drawing,
