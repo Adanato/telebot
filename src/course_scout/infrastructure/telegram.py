@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import os
@@ -8,6 +9,10 @@ from course_scout.domain.models import TelegramMessage
 from course_scout.domain.services import ScraperInterface
 
 logger = logging.getLogger(__name__)
+
+# Per-topic fetch timeout. Telethon will retry connection drops indefinitely
+# (we've seen 30+ minute hangs). After this timeout, skip the topic and move on.
+TOPIC_FETCH_TIMEOUT_SEC = 180
 
 
 class TelethonScraper(ScraperInterface):
@@ -62,20 +67,29 @@ class TelethonScraper(ScraperInterface):
                 f"Fetching messages from {channel_id}, topic={topic_id}, since {start_date}"
             )
 
-            async for message in client.iter_messages(
-                channel_id, offset_date=start_date, reverse=True, reply_to=topic_id, limit=100
-            ):
-                # Apply end_date filter if provided
-                if end_date and message.date > end_date:
-                    logger.debug(f"Reached end_date {end_date}. Stopping fetch.")
-                    break
+            async def _iterate():
+                async for message in client.iter_messages(
+                    channel_id, offset_date=start_date, reverse=True, reply_to=topic_id, limit=100
+                ):
+                    if end_date and message.date > end_date:
+                        logger.debug(f"Reached end_date {end_date}. Stopping fetch.")
+                        break
 
-                if message.text or message.media:
-                    telegram_msg = await self._process_message(
-                        channel_id, message, topic_id, media_dir
-                    )
-                    messages.append(telegram_msg)
-                    logger.debug(f"Fetched message ID {message.id}")
+                    if message.text or message.media:
+                        telegram_msg = await self._process_message(
+                            channel_id, message, topic_id, media_dir
+                        )
+                        messages.append(telegram_msg)
+                        logger.debug(f"Fetched message ID {message.id}")
+
+            try:
+                await asyncio.wait_for(_iterate(), timeout=TOPIC_FETCH_TIMEOUT_SEC)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Fetch timed out after {TOPIC_FETCH_TIMEOUT_SEC}s for "
+                    f"channel={channel_id}, topic={topic_id}. "
+                    f"Returning {len(messages)} partial messages."
+                )
 
             logger.info(f"Fetched {len(messages)} messages from {channel_id}")
         finally:

@@ -6,6 +6,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
     TextBlock,
+    ThinkingBlock,
     ToolUseBlock,
     query,
 )
@@ -81,6 +82,9 @@ class ClaudeProvider(AIProvider):
         self.usage = UsageStats()
         self.thinking = thinking
         self.effort = effort
+        # Side-channel: thinking text from the most recent call. Bench reads this
+        # immediately after agent.run() to capture failure-mode reasoning.
+        self.last_thinking: str = ""
 
     def _thinking_config(self) -> dict:
         """Build thinking config dict for ClaudeAgentOptions."""
@@ -116,10 +120,11 @@ class ClaudeProvider(AIProvider):
         return self._parse_output(output_schema, structured, tool_output, last_text)
 
     async def _collect_messages(self, input_data, options, model_id):
-        """Iterate SDK messages and extract structured output, tool output, and text."""
+        """Iterate SDK messages and extract structured output, tool output, text, thinking."""
         structured = None
         tool_output = None
         last_text = None
+        thinking_chunks: list[str] = []
 
         async for message in query(prompt=input_data, options=options):
             if isinstance(message, AssistantMessage):
@@ -128,6 +133,8 @@ class ClaudeProvider(AIProvider):
                         tool_output = block.input
                     elif isinstance(block, TextBlock):
                         last_text = block.text
+                    elif isinstance(block, ThinkingBlock):
+                        thinking_chunks.append(block.thinking)
             elif isinstance(message, ResultMessage):
                 if message.is_error:
                     logger.warning(f"ResultMessage error: {message.subtype}")
@@ -136,6 +143,7 @@ class ClaudeProvider(AIProvider):
                 if message.structured_output is not None:
                     structured = message.structured_output
 
+        self.last_thinking = "\n\n".join(thinking_chunks)
         return structured, tool_output, last_text
 
     @staticmethod
@@ -152,11 +160,29 @@ class ClaudeProvider(AIProvider):
 
     @staticmethod
     def _parse_output(output_schema, structured, tool_output, last_text):
-        """Parse output in priority order: structured > tool > text."""
-        if structured is not None:
-            return output_schema.model_validate(structured)
-        if tool_output is not None:
-            return output_schema.model_validate(tool_output)
+        """Parse output in priority order: structured > tool > text.
+
+        Defends against the model returning string-encoded JSON for nested fields
+        (e.g. `{"items": "[...]"}` instead of `{"items": [...]}`) and against
+        trailing garbage / whitespace in JSON outputs.
+        """
+        for candidate in (structured, tool_output):
+            if candidate is None:
+                continue
+            try:
+                return output_schema.model_validate(candidate)
+            except Exception as primary_err:
+                # Attempt repair: parse any string-encoded JSON fields manually
+                if isinstance(candidate, dict):
+                    repaired = ClaudeProvider._repair_string_json_fields(candidate)
+                    try:
+                        return output_schema.model_validate(repaired)
+                    except Exception:
+                        logger.warning(
+                            f"Validation failed even after JSON-string repair: {primary_err}"
+                        )
+                        continue
+
         if last_text:
             text = last_text.strip()
             if text.startswith("```"):
@@ -165,3 +191,30 @@ class ClaudeProvider(AIProvider):
             return output_schema.model_validate_json(text.strip())
 
         raise RuntimeError("No output received from Claude Agent SDK")
+
+    @staticmethod
+    def _repair_string_json_fields(data: dict) -> dict:
+        """If any field value is a JSON-string (list/object), parse it.
+
+        Trims trailing whitespace/junk before parsing — the model occasionally
+        emits `"[...]\n  "` which fails strict JSON parse.
+        """
+        import json
+        repaired = {}
+        for k, v in data.items():
+            if isinstance(v, str):
+                stripped = v.strip()
+                if stripped.startswith(("[", "{")):
+                    # Try strict parse; if fails, try truncating to last balanced bracket
+                    try:
+                        v = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        # Find last matching bracket and try again
+                        for end in range(len(stripped), 0, -1):
+                            try:
+                                v = json.loads(stripped[:end])
+                                break
+                            except json.JSONDecodeError:
+                                continue
+            repaired[k] = v
+        return repaired

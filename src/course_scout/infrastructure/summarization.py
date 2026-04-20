@@ -16,9 +16,27 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CHUNK_SIZE = 25
 
+# Usable input budget per model (context window minus headroom for system prompt,
+# output schema, tool definitions, and thinking tokens).
+_MODEL_BUDGETS: dict[str, int] = {
+    "claude-haiku-4-5": 180_000,
+    "claude-sonnet-4-6": 950_000,
+    "claude-opus-4-7": 950_000,
+}
+_DEFAULT_BUDGET = 150_000  # safe fallback for unknown models
+
+# Escalation chain: if a topic exceeds the assigned model's budget, climb to a
+# bigger model BEFORE splitting. Splitting only happens if even the top model
+# can't fit.
+_ESCALATION: dict[str, list[str]] = {
+    "claude-haiku-4-5": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"],
+    "claude-sonnet-4-6": ["claude-sonnet-4-6", "claude-opus-4-7"],
+    "claude-opus-4-7": ["claude-opus-4-7"],
+}
+
 
 class OrchestratedSummarizer(SummarizerInterface):
-    """AISummarizer using Claude with chunked pipeline."""
+    """AISummarizer using Claude with token-aware chunking + model escalation."""
 
     def __init__(
         self,
@@ -30,14 +48,38 @@ class OrchestratedSummarizer(SummarizerInterface):
         scraper: ScraperInterface | None = None,
     ):
         """Initialize with per-topic agent configuration."""
-        self.orchestrator = AgentOrchestrator(
-            summarizer_model=summarizer_model,
-            system_prompt=system_prompt,
-            thinking=thinking,
-            effort=effort,
-        )
+        self.assigned_model = summarizer_model or "claude-sonnet-4-6"
+        self.system_prompt = system_prompt
+        self.thinking = thinking
+        self.effort = effort
         self.chunk_size = chunk_size
         self.scraper = scraper
+        # Default orchestrator (assigned model). Escalation creates fresh ones.
+        self.orchestrator = self._make_orchestrator(self.assigned_model)
+
+    def _make_orchestrator(self, model: str) -> AgentOrchestrator:
+        return AgentOrchestrator(
+            summarizer_model=model,
+            system_prompt=self.system_prompt,
+            thinking=self.thinking,
+            effort=self.effort,
+        )
+
+    def _pick_model(self, total_tokens: int) -> tuple[str, int]:
+        """Pick the smallest model in the escalation chain that fits the input.
+
+        Returns (model_id, that_model's_budget). Falls back to the largest model
+        in the chain if nothing fits (caller will then split-chunk against that
+        budget).
+        """
+        chain = _ESCALATION.get(self.assigned_model, [self.assigned_model])
+        for model in chain:
+            budget = _MODEL_BUDGETS.get(model, _DEFAULT_BUDGET)
+            if total_tokens <= budget:
+                return model, budget
+        # Nothing fits — return biggest available; caller will split-chunk
+        biggest = chain[-1]
+        return biggest, _MODEL_BUDGETS.get(biggest, _DEFAULT_BUDGET)
 
     async def summarize(
         self, messages: list[TelegramMessage], topic_id: int | None = None
@@ -61,17 +103,34 @@ class OrchestratedSummarizer(SummarizerInterface):
             digest_date = datetime.date.today()
             topic_title = f"Topic {topic_id}" if topic_id else "General Channel"
 
-            # Chunk and summarize
-            chunks = self._chunk_messages(structured_messages)
-            logger.info(f"Chunked {len(structured_messages)} messages into {len(chunks)} batches")
+            # Pre-flight: estimate tokens, pick model from escalation chain
+            total_tokens = self._estimate_tokens(structured_messages)
+            chosen_model, budget = self._pick_model(total_tokens)
+            if chosen_model != self.assigned_model:
+                logger.info(
+                    f"Escalating {topic_title}: {total_tokens} tokens > "
+                    f"{self.assigned_model} budget. Using {chosen_model} instead."
+                )
+
+            # Chunk against the chosen model's budget (only splits if input still
+            # exceeds — escalation already gave us the biggest available context).
+            chunks = self._chunk_messages(structured_messages, budget=budget)
+            logger.info(
+                f"Chunked {len(structured_messages)} messages ({total_tokens} tokens) "
+                f"into {len(chunks)} batches using {chosen_model}"
+            )
+
+            # Build a per-call orchestrator with the chosen model
+            call_orchestrator = (
+                self.orchestrator if chosen_model == self.assigned_model
+                else self._make_orchestrator(chosen_model)
+            )
 
             if len(chunks) == 1:
-                # Single chunk — no merge needed
-                draft = await self._summarize_chunk(chunks[0], topic_title, digest_date)
+                draft = await self._summarize_chunk(chunks[0], topic_title, digest_date, call_orchestrator)
             else:
-                # Multiple chunks — summarize in parallel, then merge
                 chunk_summaries = await asyncio.gather(
-                    *[self._summarize_chunk(c, topic_title, digest_date) for c in chunks]
+                    *[self._summarize_chunk(c, topic_title, digest_date, call_orchestrator) for c in chunks]
                 )
                 draft = self._merge_summaries(chunk_summaries)
 
@@ -97,15 +156,56 @@ class OrchestratedSummarizer(SummarizerInterface):
             logger.error(f"Error during summarization: {e}", exc_info=True)
             return self._build_error_digest()
 
-    def _chunk_messages(self, messages: list[StructuredMessage]) -> list[list[StructuredMessage]]:
-        """Split messages into chunks of chunk_size."""
-        cs = self.chunk_size
-        return [messages[i : i + cs] for i in range(0, len(messages), cs)]
+    @staticmethod
+    def _estimate_tokens(messages: list[StructuredMessage]) -> int:
+        """Rough token estimate. ~3 chars/token heuristic (conservative for English+CJK)."""
+        total_chars = sum(len(m.content or "") + 40 for m in messages)  # +40 for metadata
+        return total_chars // 3
+
+    def _chunk_messages(
+        self, messages: list[StructuredMessage], budget: int | None = None
+    ) -> list[list[StructuredMessage]]:
+        """Token-aware chunking against a per-call budget.
+
+        - If all messages fit in `budget`, return one chunk (no splitting).
+        - Otherwise, greedy-pack messages into chunks that each fit the budget.
+        - `chunk_size` is a secondary cap on messages per chunk.
+        """
+        if not messages:
+            return []
+        if budget is None:
+            budget = _MODEL_BUDGETS.get(self.assigned_model, _DEFAULT_BUDGET)
+
+        total = self._estimate_tokens(messages)
+        if total <= budget and len(messages) <= self.chunk_size:
+            return [messages]
+
+        chunks: list[list[StructuredMessage]] = []
+        current: list[StructuredMessage] = []
+        current_tokens = 0
+        for m in messages:
+            m_tokens = self._estimate_tokens([m])
+            over_budget = current_tokens + m_tokens > budget
+            over_count = len(current) >= self.chunk_size
+            if current and (over_budget or over_count):
+                chunks.append(current)
+                current = []
+                current_tokens = 0
+            current.append(m)
+            current_tokens += m_tokens
+        if current:
+            chunks.append(current)
+        return chunks
 
     async def _summarize_chunk(
-        self, chunk: list[StructuredMessage], topic_title: str, digest_date: datetime.date
+        self,
+        chunk: list[StructuredMessage],
+        topic_title: str,
+        digest_date: datetime.date,
+        orchestrator: AgentOrchestrator | None = None,
     ) -> SummarizerOutputSchema:
-        """Summarize a single chunk of messages."""
+        """Summarize a single chunk. Uses provided orchestrator (for escalated model)
+        or falls back to the assigned-model orchestrator."""
         summarizer_input = SummarizerInputSchema(
             messages=chunk,
             topic_context=f"Topic: {topic_title}, Date: {digest_date}",
@@ -114,7 +214,7 @@ class OrchestratedSummarizer(SummarizerInterface):
                 "priority, password fields. Keep description telegraphic — facts only."
             ),
         )
-        summarizer = self.orchestrator.get_summarizer_agent()
+        summarizer = (orchestrator or self.orchestrator).get_summarizer_agent()
         return await summarizer.run(summarizer_input)
 
     @staticmethod
