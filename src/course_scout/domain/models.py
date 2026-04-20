@@ -42,9 +42,8 @@ _DESC_HELP = (
 )
 
 _PRIORITY_HELP = (
-    "HIGH = downloadable course/file with link. "
-    "MEDIUM = review, technique discussion, or fulfilled request. "
-    "LOW = unfulfilled request, off-topic, or 3D/photo/UI."
+    "Leave as null. Priority is assigned deterministically downstream from "
+    "(category, status). You do not need to populate this field."
 )
 
 
@@ -179,12 +178,12 @@ class ChannelDigest(BaseModel):
         md += f"**Date**: {self.date}\n\n"
         if self.summaries:
             if not self.summaries[0].startswith("##"):
-                md += "## 📝 Executive Summary\n\n"
+                md += "## [SUMMARY] Executive Summary\n\n"
             for s in self.summaries:
                 md += f"{s}\n\n"
         md = self._add_categorized_items(md)
         if self.key_links:
-            md += "## 🔗 Key Links\n\n"
+            md += "## [LINKS] Key Links\n\n"
             for link in self.key_links:
                 md += f"- [{link.title}]({link.url})\n"
             md += "\n"
@@ -193,11 +192,11 @@ class ChannelDigest(BaseModel):
     def _add_categorized_items(self, md: str) -> str:
         priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
         sections = {
-            "course": "## 🎓 Courses & Tutorials",
-            "file": "## 📂 Files Shared",
-            "discussion": "## 🗣 Discussions",
-            "request": "## 🙋 Requests",
-            "announcement": "## 📢 Announcements",
+            "course": "## [COURSES] Courses & Tutorials",
+            "file": "## [FILES] Files Shared",
+            "discussion": "## [DISCUSSION] Discussions",
+            "request": "## [REQUESTS] Requests",
+            "announcement": "## [ANNOUNCEMENTS] Announcements",
         }
         for cat_key, heading in sections.items():
             cat_items = [i for i in self.items if i.category == cat_key]

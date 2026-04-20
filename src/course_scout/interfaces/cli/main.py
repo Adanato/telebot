@@ -278,6 +278,9 @@ async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):
             )
             digest = await summarizer.summarize(messages, topic_id=task.topic_id)
             if digest:
+                _enforce_category_allowlist(digest, task.system_prompt_name, topic_name=name)
+                _reclassify_by_topic_name(digest, name)
+                _assign_priority(digest)
                 msg_count = len(digest.items)
                 topic_log.info(f"Completed: {msg_count} items extracted")
                 typer.echo(f"   ✅ {name}: {msg_count} items")
@@ -308,8 +311,188 @@ async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):
     return results
 
 
+# Override audit log. Every time a Python post-processor rewrites the LLM's output,
+# we record (stage, topic, before_category, after_category, title). Written to
+# logs/overrides.jsonl for offline inspection. See `_override_log()`.
+_OVERRIDE_LOG_PATH = "logs/overrides.jsonl"
+
+
+def _override_log(
+    stage: str,
+    topic: str,
+    before: str,
+    after: str | None,
+    title: str,
+    reason: str = "",
+) -> None:
+    """Append a single override event to the JSONL audit log."""
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+    path = Path(_OVERRIDE_LOG_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "stage": stage,
+            "topic": topic,
+            "before": before,
+            "after": after,  # None if item was dropped
+            "title": title[:120],
+            "reason": reason,
+        }, ensure_ascii=False) + "\n")
+
+
+def _reclassify_by_topic_name(digest, topic_name: str) -> None:
+    """Force all actionable items into RequestItem when the topic is a Requests feed.
+
+    Parser LLMs often promote a fulfilled request (with download link) to category=file,
+    even when the source topic is "Coloso Requests" / "Domestika Requests" / etc. The
+    topic framing is ground truth: a request topic contains requests, not files. We
+    rewrite the category deterministically and dedupe by title.
+
+    Discussions are left alone — those can legitimately be meta-discussions in a
+    request topic (e.g. "how do group buys work").
+    """
+    from course_scout.domain.models import RequestItem
+
+    if not any(k in topic_name.lower() for k in ("request", "download")):
+        return
+
+    new_items = []
+    seen_titles: set[str] = set()
+    for item in digest.items:
+        if item.category == "discussion":
+            new_items.append(item)
+            continue
+        # Dedupe: if we already kept an item with this title, skip
+        key = item.title.strip().lower()
+        if key in seen_titles:
+            _override_log("reclassify", topic_name, item.category, None,
+                          item.title, "duplicate title")
+            continue
+        seen_titles.add(key)
+        if item.category == "request":
+            new_items.append(item)
+        else:
+            _override_log("reclassify", topic_name, item.category, "request",
+                          item.title, "request-topic → request")
+            # Convert FileItem/CourseItem/AnnouncementItem → RequestItem
+            data = item.model_dump(exclude={"category"})
+            new_items.append(RequestItem(**data))
+    digest.items = new_items
+
+
+# Category allowlist per prompt family. Maps YAML prompt name → allowed categories.
+# If the parser emits a category outside this set (e.g. file_sharing emits
+# `course`), the item is remapped to the nearest allowed category — or dropped
+# if nothing fits. Enforces the prompt restriction in Python, since prompt-only
+# enforcement leaks at semantic boundaries (e.g. Gumroad + media attachments).
+_PROMPT_ALLOWED_CATEGORIES: dict[str, set[str]] = {
+    "course_requests":   {"request"},
+    "file_sharing":      {"file", "discussion"},
+    "discussion_lounge": {"discussion", "course", "file"},
+    "course_review":     {"course", "discussion"},
+    "language_chat":     {"file", "course", "discussion", "request", "announcement"},
+}
+
+# Remap rules for each allowlist violation. If the parser emits X in a channel
+# that allows Y, convert X → Y (preserving all other fields). Order-sensitive:
+# earlier fallbacks preferred. `None` = drop the item entirely.
+_CATEGORY_REMAP: dict[tuple[str, str], str | None] = {
+    # file_sharing: no courses, no requests, no announcements
+    ("file_sharing", "course"):       "file",         # storefront-like items → file (likely has a download in context)
+    ("file_sharing", "request"):      None,           # drop — re-upload asks are noise here
+    ("file_sharing", "announcement"): "discussion",   # community news → discussion
+    # discussion_lounge: drop requests, keep rest as-is
+    ("discussion_lounge", "request"):      None,       # unanswered questions are noise
+    ("discussion_lounge", "announcement"): "discussion",
+    # course_review: only course + discussion
+    ("course_review", "file"):         "course",
+    ("course_review", "request"):      None,
+    ("course_review", "announcement"): "discussion",
+}
+
+
+def _enforce_category_allowlist(digest, system_prompt_name: str | None, topic_name: str = "") -> None:
+    """Drop/remap items whose category is outside the prompt's allowlist.
+
+    Runtime guardrail — prompt restrictions leak at semantic boundaries (e.g. a
+    Gumroad link + media attachments in a file_sharing channel makes the model
+    uncertain between `file` and `course`). This enforces the restriction in
+    Python after the parser returns. Every remap/drop is logged to
+    `logs/overrides.jsonl` for audit.
+    """
+    if system_prompt_name is None:
+        return
+    allowed = _PROMPT_ALLOWED_CATEGORIES.get(system_prompt_name)
+    if allowed is None:
+        return
+
+    from course_scout.domain.models import (
+        CourseItem, FileItem, DiscussionItem, RequestItem, AnnouncementItem,
+    )
+    category_to_cls = {
+        "course": CourseItem, "file": FileItem, "discussion": DiscussionItem,
+        "request": RequestItem, "announcement": AnnouncementItem,
+    }
+
+    new_items = []
+    for item in digest.items:
+        if item.category in allowed:
+            new_items.append(item)
+            continue
+        # Violation — look up remap
+        remap_target = _CATEGORY_REMAP.get((system_prompt_name, item.category))
+        if remap_target is None:
+            _override_log("allowlist", topic_name, item.category, None,
+                          item.title, f"{system_prompt_name} drops {item.category}")
+            continue
+        target_cls = category_to_cls[remap_target]
+        try:
+            data = item.model_dump(exclude={"category"})
+            new_items.append(target_cls(**data))
+            _override_log("allowlist", topic_name, item.category, remap_target,
+                          item.title, f"{system_prompt_name} remaps {item.category}→{remap_target}")
+        except Exception as e:
+            _override_log("allowlist", topic_name, item.category, None,
+                          item.title, f"remap failed: {e}")
+            continue
+    digest.items = new_items
+
+
+# Deterministic priority from (category, status). The parser emits priority too,
+# but we OVERWRITE it here — priority is a pipeline routing signal, not LLM judgment.
+_PRIORITY_MAP: dict[tuple[str, str | None], str] = {
+    ("file", None): "HIGH",
+    ("course", "FULFILLED"): "HIGH",
+    ("course", None): "MEDIUM",
+    ("discussion", None): "MEDIUM",
+    ("request", "FULFILLED"): "MEDIUM",
+    ("request", None): "LOW",
+    ("announcement", None): "LOW",
+}
+
+
+def _assign_priority(digest) -> None:
+    """Overwrite each item's priority based on (category, status). Deterministic."""
+    for item in digest.items:
+        cat = item.category
+        status = getattr(item, "status", None)
+        # Try exact (cat, status) first, fall back to (cat, None)
+        priority = _PRIORITY_MAP.get((cat, status)) or _PRIORITY_MAP.get((cat, None))
+        if priority is not None:
+            item.priority = priority
+
+
 async def _generate_executive_summary(all_results, date_str):
-    """Generate a personalized executive summary from all topic digests."""
+    """Generate a personalized executive summary from all topic digests.
+
+    Stage 3 of the pipeline: the LLM sees EVERY item (with category + priority +
+    status hints) and preference-ranks top-5 by Adam's personal interests. Unlike
+    the earlier deterministic ranker, this lets the LLM elevate a relevant COURSE
+    or REQUEST above a generic FILE when it matches Adam's focus areas.
+    """
     from claude_agent_sdk import (
         AssistantMessage,
         ClaudeAgentOptions,
@@ -317,49 +500,63 @@ async def _generate_executive_summary(all_results, date_str):
         query,
     )
 
-    # Build condensed version with enough detail for good ranking
-    condensed = ""
-    for name, result in all_results:
-        condensed += f"\n### {name}\n"
-        for item in result.items[:8]:
-            cat = item.category.upper()
-            links = f" | Links: {', '.join(item.links[:2])}" if item.links else ""
-            condensed += f"- [{cat}] {item.title}: {item.description[:150]}{links}\n"
+    flat = [(item, name) for name, result in all_results for item in result.items]
 
-    prompt = f"""Today's ({date_str}) scan results from art community Telegram channels:
+    def _fmt(item, topic):
+        cat = item.category.upper()
+        status = getattr(item, "status", None)
+        priority = item.priority or ""
+        links = f" | Links: {', '.join(item.links[:2])}" if item.links else ""
+        meta = " · ".join(filter(None, [priority, status]))
+        meta_str = f" ({meta})" if meta else ""
+        return f"- [{cat}]{meta_str} {item.title} | topic={topic}: {item.description[:200]}{links}"
 
-{condensed}
+    items_block = "\n".join(_fmt(i, t) for i, t in flat) if flat else "(none)"
 
-Write an executive summary for Adam. He focuses on:
-- 2D illustration, character design, anatomy, figure drawing
-- Color theory, lighting, rendering techniques
-- Asian artists, anime/manga art styles
-- Art courses (Coloso, Schoolism, CGMA, Domestika, etc.)
+    prompt = f"""Today's ({date_str}) scan results from art community Telegram channels.
+Pick the 5 items most relevant to Adam and write a summary.
+
+Each item has: [CATEGORY] (PRIORITY · STATUS) title | topic=source: description
+
+CATEGORY semantics:
+- [FILE] = downloadable file/archive/link shared in-chat
+- [COURSE] = course recommendation, review, or shared course
+- [DISCUSSION] = technique discussion, debate, tool comparison
+- [REQUEST] = someone asking for a resource
+- [ANNOUNCEMENT] = community news
+
+PRIORITY is a routing hint (HIGH/MEDIUM/LOW) — derived deterministically from
+category + fulfillment. Use it as background, not as a hard ranker. A MEDIUM
+item on Adam's focus area beats a HIGH item that's off-topic.
+
+=== ALL ITEMS ===
+{items_block}
+
+Adam's interests (use these for preference ranking):
+- 2D illustration, character design, concept art
+- Anatomy, figure drawing, gesture
+- Color theory, lighting, rendering
+- Asian artists, anime/manga styles, webtoon
+- Courses: Coloso, Schoolism, CGMA, Domestika, Proko
+De-prioritize: 3D, game dev, photography, UI/UX, motion graphics (unless directly applicable).
 
 FORMAT (use this exact structure):
 
 ## Top 5 Finds
 
-1. **[Most relevant item]** — why it matters, source topic
-2. **[Second item]** — why it matters, source topic
-3. **[Third item]** — why it matters, source topic
-4. **[Fourth item]** — why it matters, source topic
-5. **[Fifth item]** — why it matters, source topic
+1. [TAG] **Exact item name** — one line on why it matters to Adam. *Topic: {{source}}*
+2. [TAG] **Exact item name** — one line on why it matters to Adam. *Topic: {{source}}*
+3. [TAG] **Exact item name** — one line on why it matters to Adam. *Topic: {{source}}*
+4. [TAG] **Exact item name** — one line on why it matters to Adam. *Topic: {{source}}*
+5. [TAG] **Exact item name** — one line on why it matters to Adam. *Topic: {{source}}*
+
+Pick based on Adam-relevance, not category alone. [REQUEST] items can make top-5
+if the content genuinely interests him (e.g., a requested Krenz course).
 
 ## Summary
 
-1-2 paragraphs covering the rest. Flag time-sensitive items
-(expiring links, group buys closing, new course drops).
-
-RANKING CRITERIA (in order of value — what Adam can ACT on today):
-1. Downloadable files — courses, lesson videos, art resources shared with links/passwords
-2. Course reviews with ratings — helps decide what to study next
-3. Technique discussions — actionable art tips, workflow breakdowns, style references
-4. Community resources — spreadsheets, tool links, guides, artist recommendation lists
-5. Group buy activity — only if actively organizing with participants
-
-DO NOT rank unfulfilled course requests highly — they signal demand but Adam
-can't act on them. Mention them briefly in the Summary section if relevant."""
+1-2 paragraphs covering the remaining items. Flag time-sensitive items
+(expiring links, group buys closing, new course drops, approaching deadlines)."""
 
     options = ClaudeAgentOptions(
         model="claude-haiku-4-5",
