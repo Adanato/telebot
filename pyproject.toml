@@ -34,6 +34,7 @@ course-scout-sse = "course_scout.interfaces.api.sse:main"
 [dependency-groups]
 dev = [
     "import-linter>=2.9",
+    "openai-agents",
     "pyright>=1.1.408",
     "pytest-cov>=7.0.0",
     "pytest>=9.0.2",

@@ -36,3 +36,13 @@ configs:
   - name: sonnet-medium
     model: claude-sonnet-4-6
     effort: medium
+
+  # OpenAI Agents SDK benchmark examples (requires `openai-agents` in dev deps
+  # and `OPENAI_API_KEY` in the environment):
+  # - name: gpt5-low
+  #   model: gpt-5
+  #   effort: low
+  #
+  # - name: gpt5mini-low
+  #   model: gpt-5-mini
+  #   effort: low

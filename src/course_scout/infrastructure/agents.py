@@ -22,6 +22,7 @@ from course_scout.domain.models import (
 )
 from course_scout.domain.services import AIProvider
 from course_scout.infrastructure.providers.claude_provider import ClaudeProvider
+from course_scout.infrastructure.providers.openai_agents_provider import OpenAIAgentsProvider
 from course_scout.infrastructure.providers.openai_provider import OpenAIProvider
 
 logger = logging.getLogger(__name__)
@@ -357,6 +358,13 @@ RULES:
                 default_model=model,
                 proxy=proxy,
             )
+        elif model.startswith("gpt-") or model.startswith("openai/"):
+            import os
+
+            provider = OpenAIAgentsProvider(
+                api_key=os.environ.get("OPENAI_API_KEY"),
+                effort=self.effort,
+            )
         else:
             # Default: Claude Agent SDK
             provider = ClaudeProvider(thinking=self.thinking, effort=self.effort)
@@ -384,4 +392,3 @@ RULES:
             prompt,
             SummarizerOutputSchema,
         )
-
