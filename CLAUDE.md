@@ -2,40 +2,58 @@
 
 ## Overview
 
-Telegram art channel scanner. Fetches messages via Telethon, classifies via Claude Agent SDK with per-channel system prompts, ranks via a two-stage LLM pipeline (categorize → preference). Produces daily digest reports (markdown + PDF) with a Top 5 executive summary.
+Telegram art channel scanner. Fetches messages via Telethon with rich metadata (reactions/views/forwards, document filenames, link previews, pinned-message tracking), runs a per-image vision pre-compute pass (Haiku captions cached to disk), classifies via Claude Agent SDK with per-channel system prompts, and ranks via a two-stage LLM pipeline (categorize → preference). Produces daily digest reports (markdown + PDF) with a Top 5 executive summary and native-app deep links.
 
 ## Architecture
 
 ```
 Stage 0  CLI (scan)
    ↓
-Stage 1  Telethon Fetch (per topic, with 180s timeout)
+Stage 1  Telethon Fetch (per topic, 180s timeout)
+            Captures: reactions, views, forwards, replies,
+                      document_filename (non-image docs),
+                      web_preview_{title,description,url,site}
    ↓
-Stage 2  Token-aware chunking + model escalation
+Stage 1b PINNED-MESSAGE DIFF (per topic, parallel with summarize)
+            Fetches current pins, diffs vs media_cache/pins.json,
+            prepends "### 📌 Pin Changes" to digest.summaries if changed
+   ↓
+Stage 2  VISION PRE-COMPUTE (parallel Haiku captions, cached)
+            media_cache/captions.json keyed by filename
+            Injects [Media/File: <caption>] into message content
+   ↓
+Stage 3  Content annotations
+            [File: <name>]  for zips/pdfs/rars
+            [Link: <site> — <title> — <desc>]  for URL previews
+   ↓
+Stage 4  Token-aware chunking + model escalation
             haiku-assigned  → tries haiku → sonnet → opus
             sonnet-assigned → tries sonnet → opus
             (splits chunk only if biggest model can't fit)
    ↓
-Stage 3  CATEGORIZE (LLM, parallel per topic)
+Stage 5  CATEGORIZE (LLM, parallel per topic)
             per-channel system prompt + 10 few-shot examples (BASE_OUTPUT_GUIDANCE)
             → {category, status} per item
    ↓
-Stage 4  ROUTE (Python, deterministic)
+Stage 6  ROUTE (Python, deterministic)
             _reclassify_by_topic_name (Request topics → category=request)
             _assign_priority via (category, status) → HIGH/MEDIUM/LOW
    ↓
-Stage 5  Programmatic link grounding (reject hallucinated IDs)
+Stage 7  Programmatic link grounding (reject hallucinated IDs)
    ↓
-Stage 6  PREFERENCE (LLM, single call)
+Stage 8  PREFERENCE (LLM, single call)
             Sees ALL items with (category, priority, status) hints
             Picks Top 5 by Adam's interests (2D / character / anatomy / Asian art)
             Writes Summary paragraph for the rest
    ↓
-Stage 7  Markdown + PDF report
+Stage 9  deep_linkify() — rewrite Instagram/Twitter/YouTube URLs to
+            app-scheme URIs (instagram://, twitter://, vnd.youtube://)
+   ↓
+Stage 10 Markdown + PDF report
 ```
 
-- **Domain**: `TelegramMessage`, `ChannelDigest`, `DigestItem` (discriminated union: file / course / discussion / request / announcement), `LinkItem`
-- **Infrastructure**: `TelethonScraper`, `ClaudeProvider` (Agent SDK), `OrchestratedSummarizer`, `PDFRenderer`
+- **Domain**: `TelegramMessage` (with engagement counts + doc filename + link preview fields), `ChannelDigest`, `DigestItem` (discriminated union: file / course / discussion / request / announcement), `LinkItem`
+- **Infrastructure**: `TelethonScraper`, `ClaudeProvider` (Agent SDK), `OrchestratedSummarizer`, `PDFRenderer`, `vision.py` (per-image Haiku caption cache), `pins.py` (pinned-message diff), `deep_links.py` (URL rewriter)
 - **Interfaces**: CLI (`typer`), MCP (stdio), SSE server
 
 ## Key Commands
@@ -54,9 +72,11 @@ uv run course-scout list-topics <channel_id>         # List forum topics
 - `config.yaml` — topics, agent defaults, prompt templates
 - `.env` — Telegram credentials (`TG_API_ID`, `TG_API_HASH`, `PHONE_NUMBER`)
 - Auth: Claude Agent SDK auto-detects Claude Max subscription via CLI
-- **SDK pinned to 0.1.50** in `pyproject.toml`. Upgrades to 0.1.5x+ broke parser calls (uncovered new tools triggering `error_max_turns` despite `disallowed_tools`). Re-test before bumping.
+- **SDK pinned to `claude-agent-sdk==0.1.65`** in `pyproject.toml`. Past pin to 0.1.50 was lifted after discovering:
+  - The hang on multi-modal calls in 0.1.50 was *our bug*, not the SDK's — `query(prompt=[{...blocks...}])` with a bare list silently hits neither of the `str | AsyncIterable[dict]` branches, so stdin never closes. Fix: wrap content in an async generator that yields `{"type":"user","message":{"role":"user","content":[...]}}`. See `_stream_user_turn()` in `claude_provider.py` / `vision.py`.
+  - `output_format=json_schema` injects a `StructuredOutput` pseudo-tool that consumes at least one turn internally. With richer inputs Haiku can need 3-4 turns — we use `max_turns=5` as a safety ceiling (unused turns don't cost tokens).
 - **Why Agent SDK**: We use the Agent SDK (not the raw `anthropic` API) because we authenticate via Claude Max subscription, not an API key. The Agent SDK piggybacks on the Claude Code CLI auth.
-- **Security**: Built-in tools blocked via `disallowed_tools` (hard deny). Do NOT use `allowed_tools=[]` — that's a permission allowlist, not a restriction. Do NOT use `permission_mode="bypassPermissions"`. `max_turns=1` prevents agentic looping. `setting_sources=[]` prevents filesystem settings injection.
+- **Security / tool control**: We opt in with `allowed_tools=[]` (empty allowlist = no built-in tools at all). This is the future-proof pattern in 0.1.51+; `disallowed_tools` is a brittle blocklist because new built-in tools added upstream bypass it. `permission_mode` stays at default (no `bypassPermissions`). `setting_sources=[]` prevents filesystem settings injection.
 
 ### Per-topic agent config
 
@@ -120,26 +140,36 @@ _ESCALATION = {
 
 ## Pipeline (detailed)
 
-1. **Fetch**: Telethon gets messages per topic with **180s timeout** (`TOPIC_FETCH_TIMEOUT_SEC` in `telegram.py`). On timeout, returns partial messages and continues — does NOT block the whole scan.
-2. **Token-aware chunk**: see escalation above. Single call when fits, else greedy-pack into ≤budget chunks.
-3. **Categorize**: Each chunk → Claude → `SummarizerOutputSchema`. Parallel across topics. Per-channel prompt + base guidance + few-shot examples.
-4. **Python post-processing**:
+1. **Fetch**: Telethon gets messages per topic with **180s timeout** (`TOPIC_FETCH_TIMEOUT_SEC` in `telegram.py`). On timeout, returns partial messages and continues — does NOT block the whole scan. Per-message we capture reactions, views, forwards, replies, document_filename (for zips/pdfs), and webpage preview fields.
+2. **Pin diff** (`pins.py::diff_and_record`): fetches current pinned set via `InputMessagesFilterPinned`, diffs vs `media_cache/pins.json`, prepends a `### 📌 Pin Changes` block to `digest.summaries` if anything changed. First run per topic is silent (no "everything is new" spam). Errors swallowed — pinning must never break the main scan.
+3. **Vision pre-compute** (`vision.py`): each attached image gets a cheap Haiku caption call (concurrency=5), cached at `media_cache/captions.json` keyed by filename. The caption is injected as `[Media/File: <caption>]` into the parser-visible content. Parser stays text-only.
+4. **Content annotations** (`summarization.py::_prepare_structured_input`):
+   - `[File: <filename>]` appended for non-image documents (highest-leverage signal for course drops — filename often carries title + instructor + platform verbatim)
+   - `[Link: <site> — <title> — <desc>]` appended for URLs with webpage previews
+5. **Token-aware chunk**: see escalation above. Single call when fits, else greedy-pack into ≤budget chunks.
+6. **Categorize**: Each chunk → Claude → `SummarizerOutputSchema`. Parallel across topics. Per-channel prompt + base guidance + few-shot examples.
+7. **Python post-processing**:
    - `_reclassify_by_topic_name`: items in topics with "Request" / "Download" in name → forced category=request (defense against parser drift)
    - `_assign_priority`: deterministic priority from (category, status). LLM does not pick priority.
-5. **Merge**: Combine chunk outputs (items, links).
-6. **Ground**: Programmatic link validation — reject hallucinated IDs (>32-bit), verify URLs against raw messages.
-7. **Preference / Executive Summary**: One Claude call sees ALL items, ranks Top 5 by Adam-relevance (LLM judgment), writes Summary for rest.
-8. **Report**: Markdown + PDF with clickable links. Section headers use `[FILES]`, `[REQUESTS]`, `[DISCUSSION]`, etc. (no emojis).
+8. **Merge**: Combine chunk outputs (items, links).
+9. **Ground**: Programmatic link validation — reject hallucinated IDs (>32-bit), verify URLs against raw messages.
+10. **Preference / Executive Summary**: One Claude call sees ALL items, ranks Top 5 by Adam-relevance (LLM judgment), writes Summary for rest.
+11. **Deep-link rewrite** (`deep_links.py::deep_linkify`): rewrites Instagram/Twitter/X/YouTube URLs in the combined markdown to app-scheme URIs (`instagram://`, `twitter://`, `vnd.youtube://`) so they open the native app instantly on mobile. Keeps https fallback in parens for desktop.
+12. **Report**: Markdown + PDF with clickable links. Section headers use `[FILES]`, `[REQUESTS]`, `[DISCUSSION]`, etc. (no emojis).
 
 ## Failure-mode defenses
 
 | Mode | Defense | Where |
 |---|---|---|
 | Telegram connection drops | 180s per-topic timeout, return partial | `telegram.py::TOPIC_FETCH_TIMEOUT_SEC` |
+| SDK hangs on multi-modal `query()` | Wrap content blocks in `_stream_user_turn()` async generator (SDK needs `str \| AsyncIterable[dict]`, not bare list) | `claude_provider.py`, `vision.py` |
+| `error_max_turns` with `output_format=json_schema` | `max_turns=5` (StructuredOutput pseudo-tool eats turns) | `claude_provider.py::generate_structured` |
+| Vision call rate-limited by sync lock | `asyncio.Lock + asyncio.sleep` rate limiter (prior `threading.Lock + time.sleep` froze the event loop) | `rate_limiter.py`, `agents.py` |
 | Parser emits `{"items": "[...]"}` (string-encoded list) | JSON repair: parse string fields as JSON, truncate to last balanced bracket | `claude_provider.py::_repair_string_json_fields` |
 | Topic name says "Request" but parser emits `file` | Python post-processing forces request category | `main.py::_reclassify_by_topic_name` |
 | Parser sets wrong priority | Deterministic Python override | `main.py::_assign_priority` |
 | Context overflow on big topics | Token-aware chunking + model escalation | `summarization.py::_pick_model` |
+| Pin fetch fails for one topic | Logged + swallowed — never breaks main scan | `pins.py::diff_and_record` |
 
 ## Benchmark Setup (`benchmark/`)
 
@@ -166,7 +196,7 @@ benchmark/
 └── TODO.md                      # ground-truth labeling backlog
 ```
 
-**Current bench status**: F1 = 0.878 on 1d (parser self-labels). Real ground-truth labeling pending — see `benchmark/TODO.md`.
+**Current bench status**: Hand-labeled gold exists at `benchmark/labels/canon10.yaml` — 105 samples (10 non-empty days per channel × 13 channels), 359 gold items. F1 ≈ 0.488 against gold (as of Apr 2026). Self-label F1 = 0.878 is the saturated number; gold reveals the real gap. Next bench pass should run against gold with the new `[File:/Link:]` annotations flowing.
 
 **Concurrency**: 5 parallel calls (Anthropic Max plan guidance). Higher risks "concurrent connections" 429.
 
@@ -187,8 +217,9 @@ benchmark/
 - No verifier agent — programmatic grounding replaces LLM verification
 - Default scan = yesterday (midnight to midnight), `--today` for rolling
 - PDF is default (use `--no-pdf` to skip)
-- Per-topic logs in `logs/scans/YYYY-MM-DD_HHMMSS/<topic_name>.log`
+- Logs default to `/tmp/course-scout/` (override via `COURSE_SCOUT_LOG_DIR` env var). Per-topic logs at `/tmp/course-scout/scans/YYYY-MM-DD_HHMMSS/<topic_name>.log`, rotating root log at `/tmp/course-scout/course_scout.log`
 - Reports saved to `reports/YYYY-MM-DD/scan_YYYY-MM-DD.{md,pdf}`
+- Caches: `media_cache/captions.json` (vision pre-compute), `media_cache/pins.json` (per-topic pinned-message snapshots), `media_cache/media_<msg_id>.jpg` (downloaded images)
 - Section headers in reports use bracket tags (`[FILES]`, `[REQUESTS]`, `[DISCUSSION]`) not emojis
 - Priority is **deterministic** (Python from category+status). Parser MUST NOT set it — the schema field exists but the prompt instructs to leave null.
 
@@ -243,7 +274,9 @@ Prioritized. Items marked ⭐ have highest signal-to-effort ratio.
 
 ### Pipeline hardening
 
-- **Investigate SDK pin** — 0.1.51-0.1.63 breaks parser (new tools not in `disallowed_tools` cause `error_max_turns`). File upstream issue with repro. Unpin once fixed.
+- **Engagement-based ranking** — reactions/views/forwards are captured on `TelegramMessage` but not yet consumed. Two possible uses: post-hoc sort items by engagement before preference call, or re-introduce as parser-visible fields if a bench shows material gain.
+- **Vision benchmark** — separate per-image gold (title / instructor / platform / readable-text) to measure caption quality independently. Caption quality directly gates end-to-end F1 now that annotations flow verbatim.
+- **More deep-link domains** — only Instagram/Twitter/YouTube today. Add Pinterest, TikTok, Bilibili, ArtStation as they show up in scans.
 - **Pydantic `Extra data` errors on large outputs** — occasional failure mode on long coalesced inputs. Mitigated by `_repair_string_json_fields` but not eliminated.
 - **Consider "assert" mode for dev** — when `_enforce_category_allowlist` fires, optionally raise instead of silently remap. Surfaces prompt bugs during bench runs; stays silent in prod.
 
