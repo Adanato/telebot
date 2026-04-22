@@ -1,0 +1,17 @@
+# 3-way model comparison at effort=low on the new discussion_lounge prompt.
+# Shared semaphore so aggregate in-flight stays ≤ 5 (Anthropic Max guidance).
+global_concurrency: 5
+bench: categorize
+
+configs:
+  - name: haiku-low
+    model: claude-haiku-4-5
+    effort: low
+
+  - name: sonnet-low
+    model: claude-sonnet-4-6
+    effort: low
+
+  - name: opus-low
+    model: claude-opus-4-7
+    effort: low

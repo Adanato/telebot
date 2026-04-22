@@ -140,9 +140,19 @@ class OpenAIProvider(AIProvider):
         self.usage = OpenAIUsageStats()
 
     async def generate_structured(
-        self, model_id: str, system_prompt: str, input_data: str, output_schema: type
+        self,
+        model_id: str,
+        system_prompt: str,
+        input_data: str,
+        output_schema: type,
+        media_paths: list[str] | None = None,
     ) -> BaseModel:
-        """Generate structured output using OpenAI chat completions."""
+        """Generate structured output using OpenAI chat completions.
+
+        `media_paths` is accepted for interface compatibility but ignored —
+        this provider is text-only. Use ClaudeProvider for multi-modal input.
+        """
+        del media_paths  # explicitly unused
         model = model_id or self.default_model
         schema = output_schema.model_json_schema()
 

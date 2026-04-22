@@ -7,6 +7,7 @@ Agents:
 
 import json
 import logging
+import asyncio
 import time
 from enum import Enum
 
@@ -49,6 +50,11 @@ class StructuredMessage(BaseModel):
     link: str | None = Field(None, description="Direct link to the message")
     reply_to_id: int | None = Field(None, description="ID of message being replied to")
     forward_from: str | None = Field(None, description="Original author if forwarded")
+    media_path: str | None = Field(
+        None,
+        description="Local path to attached image (ignored when include_media=False).",
+        exclude=True,  # don't round-trip to the LLM as a field; used internally
+    )
 
 
 class SummarizerInputSchema(BaseModel):
@@ -145,9 +151,11 @@ class SummarizerOutputSchema(BaseModel):
 
 
 class RateLimiter:
-    """Synchronous Rate Limiter for AI API calls.
+    """Async-aware rate limiter for AI API calls.
 
-    Enforces a maximum number of requests per minute (RPM).
+    Enforces a maximum RPM without blocking the event loop. Previously used
+    `time.sleep` which serialized all parallel topic tasks through one
+    synchronous sleep — measured ~2× slowdown on an 8-topic scan.
     """
 
     def __init__(self, rpm: int = 10):
@@ -155,16 +163,20 @@ class RateLimiter:
         self.rpm = rpm
         self.interval = 60.0 / rpm
         self.last_request_time = 0.0
+        self._lock = asyncio.Lock()
 
-    def acquire(self):
-        """Wait if necessary to comply with the rate limit."""
-        current_time = time.time()
-        elapsed = current_time - self.last_request_time
+    async def acquire(self):
+        """Wait (asynchronously) if necessary to comply with the rate limit."""
+        async with self._lock:
+            current_time = time.time()
+            elapsed = current_time - self.last_request_time
 
-        if elapsed < self.interval:
-            wait_time = self.interval - elapsed
-            logger.debug(f"Rate limit: waiting {wait_time:.2f}s")
-            time.sleep(wait_time)
+            if elapsed < self.interval:
+                wait_time = self.interval - elapsed
+                logger.debug(f"Rate limit: waiting {wait_time:.2f}s")
+                await asyncio.sleep(wait_time)
+
+            self.last_request_time = time.time()
 
         self.last_request_time = time.time()
 
@@ -190,6 +202,11 @@ class AIAgent:
         self.output_schema = output_schema
         self.rate_limiter = rate_limiter
 
+    # Per-call timeout. Observed: SDK calls can hang indefinitely with no error.
+    # 10 minutes covers worst-case Sonnet+multi-modal on very dense topics.
+    # Scan runs nightly via cron, so wall-clock isn't critical.
+    PROVIDER_CALL_TIMEOUT = 600.0
+
     async def run(self, input_data: BaseModel) -> BaseModel:
         """Execute the agent using the injected provider with fallback support."""
         last_error = None
@@ -200,22 +217,44 @@ class AIAgent:
 
             while retries < max_retries:
                 try:
-                    self.rate_limiter.acquire()
+                    await self.rate_limiter.acquire()
                     logger.info(f"Agent {model} starting request (Attempt {retries + 1})...")
 
                     logger.debug(f"Agent {model} input data: {input_data.model_dump_json()}")
 
-                    result = await self.provider.generate_structured(
-                        model_id=model,
-                        system_prompt=self.system_prompt,
-                        input_data=input_data.model_dump_json(),
-                        output_schema=self.output_schema,
+                    # Extract image attachments from SummarizerInputSchema messages
+                    # (None for other input types).
+                    media_paths: list[str] = []
+                    if hasattr(input_data, "messages"):
+                        for m in input_data.messages:
+                            mp = getattr(m, "media_path", None)
+                            if mp:
+                                media_paths.append(mp)
+
+                    result = await asyncio.wait_for(
+                        self.provider.generate_structured(
+                            model_id=model,
+                            system_prompt=self.system_prompt,
+                            input_data=input_data.model_dump_json(),
+                            output_schema=self.output_schema,
+                            media_paths=media_paths or None,
+                        ),
+                        timeout=self.PROVIDER_CALL_TIMEOUT,
                     )
 
                     logger.debug(f"Agent {model} raw result: {result}")
                     logger.info(f"Agent {model} request completed.")
                     return result
 
+                except asyncio.TimeoutError as e:
+                    last_error = e
+                    retries += 1
+                    logger.warning(
+                        f"Agent {model} exceeded {self.PROVIDER_CALL_TIMEOUT}s timeout "
+                        f"(retry {retries}/{max_retries}). Moving on."
+                    )
+                    # Don't retry-sleep on timeout — move to next model fast
+                    break
                 except Exception as e:
                     last_error = e
                     error_str = str(e).upper()
@@ -226,7 +265,7 @@ class AIAgent:
                             f"Rate limit hit for {model}. Sleeping {wait_time}s "
                             f"before retry {retries}/{max_retries}..."
                         )
-                        time.sleep(wait_time)
+                        await asyncio.sleep(wait_time)
                     else:
                         logger.error(f"Error in agent {model}: {e}")
                         break

@@ -176,9 +176,16 @@ def digest(
 
 
 def _setup_run_logs():
-    """Create a per-run log directory and return the path."""
+    """Create a per-run log directory and return the path.
+
+    Lives under the same root as the main log file (default /tmp/course-scout,
+    overridable via COURSE_SCOUT_LOG_DIR). This way you can `tail -f` both the
+    main log and any per-topic log from the same parent directory.
+    """
+    from course_scout.infrastructure.logging_config import DEFAULT_LOG_DIR
     run_id = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    run_dir = os.path.join("logs", "scans", run_id)
+    root = os.environ.get("COURSE_SCOUT_LOG_DIR", DEFAULT_LOG_DIR)
+    run_dir = os.path.join(root, "scans", run_id)
     os.makedirs(run_dir, exist_ok=True)
     return run_dir
 
@@ -275,6 +282,7 @@ async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):
                 effort=task.effort,
                 chunk_size=task.chunk_size,
                 scraper=scraper,
+                include_media=task.include_media,
             )
             digest = await summarizer.summarize(messages, topic_id=task.topic_id)
             if digest:
@@ -391,7 +399,7 @@ def _reclassify_by_topic_name(digest, topic_name: str) -> None:
 _PROMPT_ALLOWED_CATEGORIES: dict[str, set[str]] = {
     "course_requests":   {"request"},
     "file_sharing":      {"file", "discussion"},
-    "discussion_lounge": {"discussion", "course", "file"},
+    "discussion_lounge": {"discussion", "course", "file", "request"},
     "course_review":     {"course", "discussion"},
     "language_chat":     {"file", "course", "discussion", "request", "announcement"},
 }
@@ -404,8 +412,7 @@ _CATEGORY_REMAP: dict[tuple[str, str], str | None] = {
     ("file_sharing", "course"):       "file",         # storefront-like items → file (likely has a download in context)
     ("file_sharing", "request"):      None,           # drop — re-upload asks are noise here
     ("file_sharing", "announcement"): "discussion",   # community news → discussion
-    # discussion_lounge: drop requests, keep rest as-is
-    ("discussion_lounge", "request"):      None,       # unanswered questions are noise
+    # discussion_lounge: requests allowed; only announcement gets remapped
     ("discussion_lounge", "announcement"): "discussion",
     # course_review: only course + discussion
     ("course_review", "file"):         "course",

@@ -42,9 +42,19 @@ class SummarizerInterface(ABC):
 class AIProvider(ABC):
     @abstractmethod
     async def generate_structured(
-        self, model_id: str, system_prompt: str, input_data: str, output_schema: type
+        self,
+        model_id: str,
+        system_prompt: str,
+        input_data: str,
+        output_schema: type,
+        media_paths: list[str] | None = None,
     ) -> any:
-        """Generate structured output using the provider's SDK."""
+        """Generate structured output using the provider's SDK.
+
+        `media_paths` (optional): list of local image paths to attach to the user
+        message. Providers that support vision should include them; providers
+        that don't should ignore the argument.
+        """
         pass
 
 

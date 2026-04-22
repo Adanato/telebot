@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from claude_agent_sdk import (
@@ -14,6 +15,24 @@ from claude_agent_sdk import (
 from course_scout.domain.services import AIProvider
 
 logger = logging.getLogger(__name__)
+
+
+async def _stream_user_turn(content: str | list[dict]) -> AsyncIterator[dict]:
+    """Wrap content in the stream-json user-turn envelope expected by
+    `claude_agent_sdk.query()`.
+
+    The SDK's `query(prompt=...)` only accepts `str | AsyncIterable[dict]`.
+    Passing a bare list of content blocks (e.g. text + image) causes the
+    bundled `claude` CLI subprocess to hang forever — stdin is never closed.
+    This helper yields exactly one user turn, then the generator ends, which
+    signals the SDK to close stdin and let the CLI respond.
+    """
+    yield {
+        "type": "user",
+        "message": {"role": "user", "content": content},
+        "parent_tool_use_id": None,
+        "session_id": None,
+    }
 
 
 @dataclass
@@ -95,29 +114,92 @@ class ClaudeProvider(AIProvider):
         return {"type": "adaptive"}
 
     async def generate_structured(
-        self, model_id: str, system_prompt: str, input_data: str, output_schema: type
+        self,
+        model_id: str,
+        system_prompt: str,
+        input_data: str,
+        output_schema: type,
+        media_paths: list[str] | None = None,
     ) -> any:
-        """Generate structured output using Claude Agent SDK."""
+        """Generate structured output using Claude Agent SDK.
+
+        If `media_paths` is provided, each path is attached to the user message
+        as a base64-encoded image block (native Claude vision). Files >5MB or
+        non-image paths are skipped silently.
+        """
         schema = output_schema.model_json_schema()
 
         options = ClaudeAgentOptions(
             model=model_id,
             system_prompt=system_prompt,
-            max_turns=1,
+            # output_format=json_schema consumes one turn internally (SDK
+            # injects a StructuredOutput pseudo-tool). max_turns=1 triggers
+            # error_max_turns; 2 gives the model a turn for the actual response.
+            max_turns=2,
             setting_sources=[],
-            disallowed_tools=[
-                "Bash", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit",
-                "Glob", "Grep", "WebFetch", "WebSearch", "Agent",
-            ],
+            allowed_tools=[],
             thinking=self._thinking_config(),
             effort=self.effort,
             output_format={"type": "json_schema", "schema": schema},
         )
 
+        # Build prompt: plain string for text-only, AsyncIterable envelope for
+        # multi-modal. The SDK treats a bare list as neither str nor
+        # AsyncIterable and hangs stdin — always wrap multi-block content.
+        prompt: str | AsyncIterator[dict] = input_data
+        if media_paths:
+            content_blocks = self._build_image_blocks(media_paths)
+            if content_blocks:
+                combined = [{"type": "text", "text": input_data}, *content_blocks]
+                prompt = _stream_user_turn(combined)
+                total_bytes = sum(
+                    len(b["source"]["data"]) * 3 // 4 for b in content_blocks
+                )
+                logger.info(
+                    f"[{model_id}] {len(content_blocks)} image(s) attached "
+                    f"(~{total_bytes // 1024} KB)"
+                )
+
         structured, tool_output, last_text = await self._collect_messages(
-            input_data, options, model_id
+            prompt, options, model_id
         )
         return self._parse_output(output_schema, structured, tool_output, last_text)
+
+    @staticmethod
+    def _build_image_blocks(media_paths: list[str]) -> list[dict]:
+        """Convert local image paths to base64 content blocks. Skips missing,
+        oversized, or non-image files."""
+        import base64
+        import os
+
+        MAX_BYTES = 5 * 1024 * 1024
+        SUPPORTED = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                     ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
+        blocks: list[dict] = []
+        for path in media_paths:
+            if not path or not os.path.exists(path):
+                continue
+            ext = os.path.splitext(path)[1].lower()
+            media_type = SUPPORTED.get(ext)
+            if media_type is None:
+                continue
+            try:
+                if os.path.getsize(path) > MAX_BYTES:
+                    logger.warning(f"Skipping {path}: >5MB")
+                    continue
+                with open(path, "rb") as f:
+                    data = base64.standard_b64encode(f.read()).decode("ascii")
+                blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": data,
+                    },
+                })
+            except OSError as e:
+                logger.warning(f"Skipping {path}: {e}")
+        return blocks
 
     async def _collect_messages(self, input_data, options, model_id):
         """Iterate SDK messages and extract structured output, tool output, text, thinking."""

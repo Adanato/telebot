@@ -3,11 +3,19 @@ import os
 from logging.handlers import RotatingFileHandler
 
 
-def setup_logging(log_dir: str = "logs", log_level: int = logging.DEBUG):
+# Primary log directory: overridable via env var (COURSE_SCOUT_LOG_DIR) for
+# production use, defaults to /tmp/course-scout so logs are world-readable and
+# tail-able without needing to be in the project directory.
+DEFAULT_LOG_DIR = os.environ.get("COURSE_SCOUT_LOG_DIR", "/tmp/course-scout")
+
+
+def setup_logging(log_dir: str | None = None, log_level: int = logging.DEBUG):
     """Set up centralized logging for the course_scout application.
 
     Logs to both console (INFO) and a persistent file (DEBUG).
+    Default path: /tmp/course-scout (override via COURSE_SCOUT_LOG_DIR env).
     """
+    log_dir = log_dir or DEFAULT_LOG_DIR
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "course_scout.log")
 

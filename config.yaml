@@ -46,6 +46,9 @@ prompts:
     questions, or extraction problems. DO NOT emit category=request — that's for
     request channels; re-upload asks are noise here.
 
+    Some messages contain [Media/File: <caption>] — these are image captions from a vision pass. Treat as authoritative text content for titles,
+    screenshots of download QR codes, passwords visible in the image.
+
     OUTPUT SCHEMA (two allowed categories):
     - category=file: shared download.
       FIELDS: instructor, platform (Baidu Pan, Quark Pan, Mega, Telegram, Google Drive),
@@ -67,6 +70,9 @@ prompts:
     Extract items from MULTILINGUAL art community chat.
     Messages may be in Russian, Korean, Japanese, Spanish, Portuguese, Persian, Hindi, or Urdu.
     Telegraphic style — no narrative, just structured data. Translate everything to English.
+
+    Some messages contain [Media/File: <caption>] — image captions from a vision pass. Authoritative text for titles in any language,
+    book/course covers, and resource names. Translate to English as with text.
 
     DECISION TREE (apply in this exact order — first match wins):
 
@@ -105,32 +111,76 @@ prompts:
     - Return valid JSON matching the schema
 
   discussion_lounge: |
-    Extract items from a DISCUSSION lounge. Primary output is category=discussion
-    (technique breakdowns, tool comparisons, style analysis). Also allowed:
-    category=course (review/recommendation mentioned) and category=file (shared
-    resource). DO NOT emit category=request — unanswered questions are noise;
-    extract only if the thread produced a real answer/resource.
+    Extract items from a general-purpose lounge channel. Mix of technique
+    discussions, course talk, resource shares, AND recommendation requests
+    from community members.
 
-    OUTPUT SCHEMA (three allowed categories):
-    - category=discussion: technique breakdown, tool comparison, style analysis.
+    Some messages contain [Media/File: <caption>] — image captions from a vision pass. Authoritative text for book covers, course
+    screenshots, artist names, and resource titles otherwise unavailable in text.
+
+    HIGH BAR FOR EXTRACTION (most chat is NOT extractable):
+    The default is to SKIP. Only extract an item if you can identify at least
+    one of these signals:
+      a) A named course, book, instructor, or tool
+      b) A concrete link, password, or file share
+      c) An actionable technique with a specific method/recipe
+      d) An explicit request for a named resource
+
+    Generic chit-chat, art critique of someone's personal work, genre
+    philosophy debates, software troubleshooting, and social exchanges are
+    NOT extractable — skip them even if they're on-topic.
+
+    OUTPUT SCHEMA (four allowed categories):
+    - category=discussion: technique with a CONCRETE method (e.g. "AO overlay
+      test for grayscale", "731/632 rule for design"), or consensus
+      recommendations naming MULTIPLE resources (e.g. "for anatomy: tenten,
+      hide, mr monster, dm"), or named-course review/comparison.
+      SKIP: personal critique, software help, genre/taste debate, mood chat.
       FIELDS: instructor (if about a specific artist/method)
-    - category=course: course review or recommendation in conversation.
+    - category=course: course with a CONCRETE VERDICT ("X is great for Y",
+      "X is too slow"). Bare mentions / release news / "should I take X?"
+      are NOT course items (those are discussion).
       FIELDS: instructor, platform, status (DISCUSSING/FULFILLED)
-    - category=file: shared resource (spreadsheet, reference, brush pack).
+    - category=file: shared resource WITH a link (spreadsheet, reference,
+      brush pack, course index). A link in-channel makes it `file`, not
+      `announcement`.
       FIELDS: platform, password, status=FULFILLED
+    - category=request: member asking for a NAMED resource they don't have.
+      "Anyone got <specific thing>?" → request.
+      "Have you tried X?" / "What do you think of X?" is chat, NOT a request.
+      FIELDS: instructor, platform, status (UNFULFILLED / DISCUSSING / FULFILLED)
 
-    Skip: casual greetings, memes, reactions without substance, pure social chat.
+    GROUPING RULE (critical — over-splitting is the main failure mode):
+    Multiple messages about the same topic/instructor/course = ONE item.
+    Do NOT emit one item per message. A 20-message thread about Krenz's
+    Color & Light course is ONE `course` or `discussion`, not 3-4 items.
+
+    CATEGORY BOUNDARIES (resolve ambiguous cases this way):
+    - Thread about "when will course X drop" / "it's coming soon" → discussion
+      (release chatter, no verdict)
+    - "X course is worth it for color theory" → course (has verdict)
+    - Someone asks "anyone have X?" with no fulfillment → request UNFULFILLED
+    - Spreadsheet URL shared → file (with platform + link)
+    - Meta-announcement like "new courses coming" → discussion (not announcement —
+      that category is reserved for language_chat)
+
+    Skip: casual greetings, memes, pure reactions, off-topic gaming/anime chat.
 
     RULES:
     - msg_ids required for every item
     - Preserve shared reference URLs exactly
     - Do not hallucinate links
+    - Do not emit announcement category in this channel
+    - Return valid JSON matching the schema
     - Do not emit request or announcement categories
     - Return valid JSON matching the schema
 
   course_review: |
     Extract COURSE REVIEWS from art community Telegram messages.
     Telegraphic style — no narrative, just structured data.
+
+    Some messages contain [Media/File: <caption>] — image captions from a vision pass. Authoritative text for course screenshots,
+    instructor photos, platform logos, and titles visible in the image.
 
     OUTPUT SCHEMA (two allowed categories):
     - category=course: the review itself. FIELDS: instructor, platform.

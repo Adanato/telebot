@@ -1,11 +1,13 @@
-import threading
+import asyncio
 import time
 
 
 class RateLimiter:
-    """Synchronous Rate Limiter for API calls.
+    """Async-aware rate limiter for API calls.
 
-    Enforces a maximum number of requests per minute (RPM).
+    Enforces a maximum number of requests per minute (RPM) WITHOUT blocking the
+    event loop. The previous implementation used `time.sleep` inside a threading
+    lock, which froze all parallel tasks during throttle waits.
     """
 
     def __init__(self, rpm: int = 15):
@@ -13,25 +15,16 @@ class RateLimiter:
         self.rpm = rpm
         self.interval = 60.0 / rpm
         self.last_request_time = 0.0
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
 
-    def acquire(self):
-        """Wait if necessary to comply with the rate limit."""
-        with self._lock:
+    async def acquire(self):
+        """Wait (asynchronously) if necessary to comply with the rate limit."""
+        async with self._lock:
             current_time = time.time()
             elapsed = current_time - self.last_request_time
 
             if elapsed < self.interval:
                 wait_time = self.interval - elapsed
-                # print(f"DEBUG: Rate limit hit. Waiting {wait_time:.2f}s")
-                time.sleep(wait_time)
+                await asyncio.sleep(wait_time)
 
             self.last_request_time = time.time()
-
-    def __enter__(self):
-        """Enter context manager and acquire lease."""
-        self.acquire()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Exit context manager."""
-        pass

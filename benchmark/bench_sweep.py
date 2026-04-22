@@ -134,7 +134,7 @@ async def main() -> None:
     if not to_run:
         raise SystemExit(f"No labeled samples for fixture {args.fixture}. Run label.py first.")
 
-    _augment_run_parser_signature()
+    # run_parser now accepts model + effort directly — no monkey-patch needed
     sem = asyncio.Semaphore(global_conc)
 
     print(

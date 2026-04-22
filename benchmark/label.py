@@ -106,9 +106,13 @@ async def run_parser_with_trace(
     }
 
 
-async def run_parser(chunk: dict) -> list[dict]:
+async def run_parser(
+    chunk: dict,
+    model: str = "claude-haiku-4-5",
+    effort: str = "low",
+) -> list[dict]:
     """Invoke the parser; return just the items. Thin wrapper over run_parser_with_trace."""
-    trace = await run_parser_with_trace(chunk)
+    trace = await run_parser_with_trace(chunk, model=model, effort=effort)
     return trace["items"]
 
 

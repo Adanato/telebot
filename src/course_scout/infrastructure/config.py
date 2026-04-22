@@ -233,6 +233,7 @@ class TaskConfig(BaseModel):
     max_messages: int | None = None
     thinking: Literal["enabled", "disabled", "adaptive"] | None = None
     effort: Literal["low", "medium", "high", "max"] | None = None
+    include_media: bool | None = None  # None = inherit default (False for request channels)
 
     def resolve(self, defaults: "AgentDefaults") -> "ResolvedTaskConfig":
         """Merge task-level overrides with global defaults."""
@@ -248,6 +249,9 @@ class TaskConfig(BaseModel):
             max_messages=self.max_messages or defaults.max_messages,
             thinking=self.thinking or defaults.thinking,
             effort=self.effort or defaults.effort,
+            include_media=(
+                self.include_media if self.include_media is not None else defaults.include_media
+            ),
         )
 
 
@@ -265,6 +269,7 @@ class ResolvedTaskConfig(BaseModel):
     max_messages: int = 100
     thinking: str = "adaptive"
     effort: str = "medium"
+    include_media: bool = False  # set True to pass image attachments into the parser call
 
 
 class AgentDefaults(BaseModel):
@@ -275,6 +280,7 @@ class AgentDefaults(BaseModel):
     max_messages: int = 100
     thinking: str = "adaptive"
     effort: str = "medium"
+    include_media: bool = False
 
 
 class Settings(BaseSettings):
@@ -340,6 +346,11 @@ def load_settings(config_path: str = "config.yaml") -> Settings:
                 if task.system_prompt and task.system_prompt in prompts:
                     task.system_prompt_name = task.system_prompt
                     task.system_prompt = prompts[task.system_prompt]
+                # Auto-enable media for non-request channels. Request channels
+                # are text-only (asks rarely carry useful images). Explicit
+                # per-task include_media still wins.
+                if task.include_media is None:
+                    task.include_media = task.system_prompt_name != "course_requests"
                 # Prepend shared base (output schema + few-shot examples)
                 if task.system_prompt:
                     task.system_prompt = BASE_OUTPUT_GUIDANCE + task.system_prompt

@@ -46,6 +46,7 @@ class OrchestratedSummarizer(SummarizerInterface):
         effort: str = "medium",
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         scraper: ScraperInterface | None = None,
+        include_media: bool = False,
     ):
         """Initialize with per-topic agent configuration."""
         self.assigned_model = summarizer_model or "claude-sonnet-4-6"
@@ -54,6 +55,7 @@ class OrchestratedSummarizer(SummarizerInterface):
         self.effort = effort
         self.chunk_size = chunk_size
         self.scraper = scraper
+        self.include_media = include_media
         # Default orchestrator (assigned model). Escalation creates fresh ones.
         self.orchestrator = self._make_orchestrator(self.assigned_model)
 
@@ -197,6 +199,10 @@ class OrchestratedSummarizer(SummarizerInterface):
             chunks.append(current)
         return chunks
 
+    # Cap on images captioned per chunk (most-recent wins if more).
+    _MAX_IMAGES_PER_CALL = 20
+    _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB per image
+
     async def _summarize_chunk(
         self,
         chunk: list[StructuredMessage],
@@ -204,8 +210,63 @@ class OrchestratedSummarizer(SummarizerInterface):
         digest_date: datetime.date,
         orchestrator: AgentOrchestrator | None = None,
     ) -> SummarizerOutputSchema:
-        """Summarize a single chunk. Uses provided orchestrator (for escalated model)
-        or falls back to the assigned-model orchestrator."""
+        """Summarize a single chunk.
+
+        Vision pre-pass (when self.include_media is True):
+        For each message with a media_path, caption it via cheap Haiku vision
+        (parallel, one call per image). Inject the caption back into the
+        message's content as "[Media/File: <caption>]". The main parser call
+        is then TEXT-ONLY and sees captions inline — no base64 blobs.
+
+        This sidesteps the SDK hang observed with Sonnet + many base64 images
+        in a single call, and lets the parser stay fast/reliable.
+        """
+        import os
+
+        if self.include_media:
+            from course_scout.infrastructure.vision import caption_paths
+
+            # Collect valid, size-capped image paths (newest first)
+            image_msgs = []
+            for m in chunk:
+                if not m.media_path:
+                    continue
+                try:
+                    if os.path.exists(m.media_path) \
+                            and os.path.getsize(m.media_path) <= self._MAX_IMAGE_BYTES:
+                        image_msgs.append(m)
+                except OSError:
+                    pass
+            image_msgs.sort(key=lambda m: m.id, reverse=True)
+            if len(image_msgs) > self._MAX_IMAGES_PER_CALL:
+                dropped = image_msgs[self._MAX_IMAGES_PER_CALL:]
+                logger.info(
+                    f"[{topic_title}] dropping {len(dropped)} image(s); "
+                    f"captioning only {self._MAX_IMAGES_PER_CALL} most recent"
+                )
+                image_msgs = image_msgs[:self._MAX_IMAGES_PER_CALL]
+
+            # Caption in parallel. Map path → caption.
+            if image_msgs:
+                paths = [m.media_path for m in image_msgs if m.media_path]
+                logger.info(f"[{topic_title}] captioning {len(paths)} image(s)...")
+                captions = await caption_paths(paths)
+                for m in image_msgs:
+                    cap = captions.get(m.media_path or "", "")
+                    if cap:
+                        # Replace placeholder with captioned form
+                        if m.content == "[Media/File]" or not m.content:
+                            m.content = f"[Media/File: {cap}]"
+                        else:
+                            m.content = f"{m.content}\n[Media/File: {cap}]"
+                logger.info(
+                    f"[{topic_title}] captioned {len([c for c in captions.values() if c])} image(s)"
+                )
+
+        # Always clear media_path — parser call is text-only, captions are inline
+        for m in chunk:
+            m.media_path = None
+
         summarizer_input = SummarizerInputSchema(
             messages=chunk,
             topic_context=f"Topic: {topic_title}, Date: {digest_date}",
@@ -246,6 +307,7 @@ class OrchestratedSummarizer(SummarizerInterface):
                     link=m.link,
                     reply_to_id=m.reply_to_id,
                     forward_from=m.forward_from_author,
+                    media_path=m.local_media_path,
                 )
             )
         return structured
