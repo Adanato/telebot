@@ -272,7 +272,10 @@ class OrchestratedSummarizer(SummarizerInterface):
             topic_context=f"Topic: {topic_title}, Date: {digest_date}",
             chat_message=(
                 "Extract structured items. Use msg_ids, instructor, platform, status, "
-                "priority, password fields. Keep description telegraphic — facts only."
+                "priority, password fields. Keep description telegraphic — facts only.\n"
+                "Content may include [Media/File: <caption>], [File: <filename>], "
+                "or [Link: <site — title — desc>] annotations — treat all of these "
+                "as authoritative text for identifying titles, instructors, platforms."
             ),
         )
         summarizer = (orchestrator or self.orchestrator).get_summarizer_agent()
@@ -294,10 +297,27 @@ class OrchestratedSummarizer(SummarizerInterface):
     def _prepare_structured_input(
         self, messages: list[TelegramMessage]
     ) -> list[StructuredMessage]:
-        """Convert domain messages to structured agent input."""
+        """Convert domain messages to structured agent input.
+
+        Inline-annotates `content` with signals the parser otherwise wouldn't see:
+        - `[File: <name>]` for non-image document uploads (huge for course drops)
+        - `[Link: <site> — <title> — <desc>]` for URLs with webpage previews
+        Engagement counts live on TelegramMessage but are not passed to the LLM —
+        they bloat the parser payload without clear benefit on small samples.
+        """
         structured = []
         for m in messages:
             content = str(m.text) if m.text else "[Media/File]"
+            if m.document_filename:
+                content = f"{content}\n[File: {m.document_filename}]"
+            if m.web_preview_title or m.web_preview_description:
+                preview_parts = [
+                    p for p in (m.web_preview_site, m.web_preview_title,
+                                 (m.web_preview_description or "")[:200])
+                    if p
+                ]
+                if preview_parts:
+                    content = f"{content}\n[Link: {' — '.join(preview_parts)}]"
             structured.append(
                 StructuredMessage(
                     id=m.id,

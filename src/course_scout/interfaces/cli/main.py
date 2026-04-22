@@ -289,6 +289,18 @@ async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):
                 _enforce_category_allowlist(digest, task.system_prompt_name, topic_name=name)
                 _reclassify_by_topic_name(digest, name)
                 _assign_priority(digest)
+
+                # Pin-diff: run against cache, prepend to summaries if changed.
+                # Swallowed errors can't break the main scan.
+                from course_scout.infrastructure.pins import diff_and_record
+                try:
+                    pin_md = await diff_and_record(scraper, task.channel_id, task.topic_id)
+                    if pin_md:
+                        digest.summaries.insert(0, pin_md)
+                        topic_log.info("Pin changes detected and injected into summary")
+                except Exception as e:
+                    topic_log.warning(f"Pin diff failed: {e}")
+
                 msg_count = len(digest.items)
                 topic_log.info(f"Completed: {msg_count} items extracted")
                 typer.echo(f"   ✅ {name}: {msg_count} items")
@@ -611,6 +623,11 @@ def _output_combined_report(all_results, pdf=False):
     combined_md += exec_summary + "\n\n---\n\n"
     for name, result in all_results:
         combined_md += f"## 📌 {name}\n\n{result.to_markdown()}\n\n---\n\n"
+
+    # Rewrite known social URLs to app-scheme URIs so they open the native
+    # app directly instead of bouncing through Telegram's in-app browser.
+    from course_scout.infrastructure.deep_links import deep_linkify
+    combined_md = deep_linkify(combined_md)
 
     md_path = os.path.join(report_dir, f"scan_{today_str}.md")
     with open(md_path, "w", encoding="utf-8") as f:

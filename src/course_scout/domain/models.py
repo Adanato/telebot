@@ -165,6 +165,22 @@ class TelegramMessage(BaseModel):
     forward_from_author: str | None = None
     local_media_path: str | None = None
 
+    # Engagement signals (Telethon exposes these on every message)
+    reaction_count: int = 0
+    views: int | None = None
+    forwards: int = 0
+    reply_count: int = 0
+
+    # Non-image document metadata (zips/pdfs/rars — filename is a huge signal
+    # for course drops, e.g. "Coloso_ChonNam_Lighting_Vol2.zip")
+    document_filename: str | None = None
+
+    # Link preview (populated when message contains a URL with webpage metadata)
+    web_preview_title: str | None = None
+    web_preview_description: str | None = None
+    web_preview_url: str | None = None
+    web_preview_site: str | None = None
+
 
 class ChannelDigest(BaseModel):
     channel_name: str

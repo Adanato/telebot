@@ -132,10 +132,12 @@ class ClaudeProvider(AIProvider):
         options = ClaudeAgentOptions(
             model=model_id,
             system_prompt=system_prompt,
-            # output_format=json_schema consumes one turn internally (SDK
-            # injects a StructuredOutput pseudo-tool). max_turns=1 triggers
-            # error_max_turns; 2 gives the model a turn for the actual response.
-            max_turns=2,
+            # output_format=json_schema injects a StructuredOutput pseudo-tool
+            # that consumes at least one turn internally. With richer inputs
+            # (engagement fields, [File:/Link:] annotations) Haiku occasionally
+            # needs 3-4 turns before it emits the structured payload. 5 is a
+            # generous ceiling — unused turns don't cost tokens.
+            max_turns=5,
             setting_sources=[],
             allowed_tools=[],
             thinking=self._thinking_config(),
