@@ -28,7 +28,13 @@ default:
 # Start SSE server
 @sse:
     uv run telebot-sse
- 
+
+# Publish a TaskNotes Inbox stub for the most recent scan (or pass --date YYYY-MM-DD).
+# Run this on the Mac (vault is OneDrive-synced from a Mac path); won't work
+# inside the NAS Docker container.
+@post-task *args:
+    uv run course-scout post-task {{args}}
+
 # --- QA & CI ---
  
 # Run tests

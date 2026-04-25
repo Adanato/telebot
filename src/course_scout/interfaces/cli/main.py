@@ -711,6 +711,71 @@ def scan(
     typer.echo(f"\n{merged.summary()}")
 
 
+@app.command(name="post-task")
+def post_task(
+    date: str = typer.Option(
+        None,
+        "--date",
+        help="YYYY-MM-DD; defaults to the most recent dated subdir of reports/",
+    ),
+    reports_dir: str = typer.Option(
+        "reports",
+        "--reports-dir",
+        help="Parent dir holding YYYY-MM-DD subdirs (default: ./reports/)",
+    ),
+    vault_dir: str = typer.Option(
+        None,
+        "--vault-dir",
+        help="Override Obsidian vault path (else COURSE_SCOUT_VAULT_DIR env, "
+             "else ~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault)",
+    ),
+):
+    """Publish a TaskNotes Inbox stub for a course-scout daily report.
+
+    Reads `<reports-dir>/<date>/scan_<date>.md` (and matching .pdf), extracts
+    Executive Summary + Top finds, writes a stub into the vault Inbox so the
+    next morning's TaskNotes review surfaces it as an actionable item.
+
+    Run this on the same machine that owns the vault filesystem (the Mac, not
+    the NAS Docker container) — see CLAUDE.md "Cross-machine publishing".
+    """
+    import re as _re
+    from pathlib import Path as _Path
+
+    from course_scout.infrastructure.tasknotes import TaskNotesPublisher
+
+    setup_logging()
+
+    parent = _Path(reports_dir).expanduser().resolve()
+    if not parent.is_dir():
+        typer.echo(f"ERR: reports dir not found: {parent}", err=True)
+        raise typer.Exit(2)
+
+    if date is None:
+        dated = sorted(
+            d.name for d in parent.iterdir()
+            if d.is_dir() and _re.fullmatch(r"\d{4}-\d{2}-\d{2}", d.name)
+        )
+        if not dated:
+            typer.echo(f"ERR: no YYYY-MM-DD subdirs in {parent}", err=True)
+            raise typer.Exit(2)
+        date = dated[-1]
+
+    report_dir = parent / date
+    md_files = sorted(report_dir.glob("scan_*.md"))
+    if not md_files:
+        typer.echo(f"ERR: no scan_*.md in {report_dir}", err=True)
+        raise typer.Exit(2)
+    md_path = md_files[0]
+    pdf_path = md_path.with_suffix(".pdf")
+    if not pdf_path.is_file():
+        pdf_path = None  # type: ignore[assignment]
+
+    publisher = TaskNotesPublisher(_Path(vault_dir).expanduser() if vault_dir else None)
+    stub = publisher.publish(md_path, pdf_path)
+    typer.echo(f"wrote {stub}")
+
+
 @app.command()
 def list_topics(channel: str):
     """List all topics in a forum-enabled Telegram group/channel."""

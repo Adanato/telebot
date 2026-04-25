@@ -65,7 +65,56 @@ uv run course-scout scan -d 3         # Last 3 complete days
 uv run course-scout scan --no-pdf     # Markdown only
 uv run course-scout digest <channel> -t <topic_id>  # Single topic
 uv run course-scout list-topics <channel_id>         # List forum topics
+uv run course-scout post-task         # Publish TaskNotes Inbox stub for most recent scan
+uv run course-scout post-task --date 2026-04-25      # Specific date
 ```
+
+## TaskNotes Publishing
+
+The `post-task` command writes a TaskNotes-formatted stub of the most recent
+scan into the user's Obsidian vault Inbox so the daily digest surfaces as an
+actionable task.
+
+- Source module: `infrastructure/tasknotes.py` (`TaskNotesPublisher`)
+- Output: `<vault>/TaskNotes/Inbox/course-scout-YYYY-MM-DD.md`
+- Frontmatter: `status: inbox`, `tags: [task, course-scout]`, `contexts: [dailies]`
+- Body: extracted Executive Summary + Top finds, plus `file://` links back to
+  the full report (PDF opens in Skim if set as macOS' default PDF handler)
+- Idempotent on (date, source) — re-running overwrites the same stub but
+  preserves the original `dateCreated` so the TaskNotes age stamp doesn't reset
+- Vault path resolution order: `--vault-dir` flag → `COURSE_SCOUT_VAULT_DIR`
+  env var → default `~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault`
+
+### Cross-machine publishing (current and future)
+
+**Current**: run `post-task` on the Mac. The vault filesystem is owned by
+the Mac (OneDrive-synced from a Mac path), and the NAS reports dir is
+SMB-mounted at `~/NAS/course-scout/reports/`, so the Mac-side invocation
+can read NAS reports + write the vault stub directly. Mac is the single
+writer; OneDrive propagates the stub to other devices.
+
+**Why NOT publish from the NAS Docker container**: the container has no
+access to the Mac filesystem, and reverse-mounting (Mac exposes vault
+inbound to NAS) adds attack surface plus breaks on Mac sleep. Pushing
+to OneDrive directly via rclone from the container would create a
+second sync engine racing OneDrive — recipe for sync conflicts.
+
+**Future cross-machine options** (when you want the stub to land even
+when the Mac is asleep / off):
+
+1. **rsync-from-NAS-then-publish on Mac wake**: NAS cron rsyncs each new
+   `reports/<date>/` to a stable local path on the Mac when Mac is online,
+   and a Mac launchd "wake from sleep" watcher fires `post-task` against
+   it. Cleanest if you don't mind a 1-message-delay until Mac wakes.
+2. **NAS writes a stub to a shared Syncthing folder** (not the OneDrive
+   vault), and a Mac-side script merges it into `TaskNotes/Inbox/` on
+   wake. Avoids the dual-sync-engine problem.
+3. **Run a small Mac-side HTTP service** that NAS POSTs to after each
+   scan; service writes the stub. Lowest latency, highest setup cost
+   (need launchd-managed daemon + auth).
+
+For now: launchd timer on the Mac firing `just post-task` at e.g. 7:30am
+covers 95% of cases (Mac is awake by then) without any new infrastructure.
 
 ## Config
 
