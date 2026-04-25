@@ -29,6 +29,7 @@ def _get_settings():
             raise
     return settings
 
+
 # Initialize MCP Server
 mcp = FastMCP("Course Scout")
 
@@ -107,6 +108,9 @@ async def generate_digest(
             peer = channel_id
 
         digest = await use_case.execute(peer, topic_id=topic_id, lookback_days=lookback_days)
+
+        if digest is None:
+            return "No messages found for the requested period."
 
         markdown_content = digest.to_markdown()
 

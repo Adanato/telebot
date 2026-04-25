@@ -3,7 +3,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from importlib import import_module
-from typing import Any
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
@@ -100,14 +100,16 @@ class OpenAIAgentsUsageStats:
             cost = _estimate_cost(model, input_tok, output_tok, cache_read)
 
         self.total_cost_usd += cost
-        self.calls.append({
-            "model": model,
-            "input_tokens": input_tok,
-            "output_tokens": output_tok,
-            "cache_read": cache_read,
-            "duration_ms": duration_ms,
-            "cost_usd": cost,
-        })
+        self.calls.append(
+            {
+                "model": model,
+                "input_tokens": input_tok,
+                "output_tokens": output_tok,
+                "cache_read": cache_read,
+                "duration_ms": duration_ms,
+                "cost_usd": cost,
+            }
+        )
         logger.info(
             f"[{model}] {input_tok} in / {output_tok} out / "
             f"{cache_read} cache / {duration_ms}ms / ${cost:.4f}"
@@ -159,12 +161,21 @@ class OpenAIAgentsProvider(AIProvider):
         from openai.types.shared import Reasoning
 
         return agents_sdk.ModelSettings(
-            reasoning=Reasoning(effort=self.effort),
+            reasoning=Reasoning(
+                effort=cast(
+                    Literal["none", "minimal", "low", "medium", "high", "xhigh"], self.effort
+                )
+            ),
             verbosity="low",
         )
 
     async def generate_structured(
-        self, model_id: str, system_prompt: str, input_data: str, output_schema: type
+        self,
+        model_id: str,
+        system_prompt: str,
+        input_data: str,
+        output_schema: type,
+        media_paths: list[str] | None = None,
     ) -> BaseModel:
         """Generate structured output using the OpenAI Agents SDK."""
         self.last_thinking = ""

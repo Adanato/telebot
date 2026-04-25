@@ -15,9 +15,15 @@ from course_scout.infrastructure.agents import RawDigestItem, SummarizerOutputSc
 class TestRawDigestItemConversion:
     def test_to_course(self):
         raw = RawDigestItem(
-            title="Krenz Color", description="Beginner course", category="course",
-            instructor="Krenz", platform="Coloso", status="FULFILLED", priority="HIGH",
-            password="abc", msg_ids=[1, 2],
+            title="Krenz Color",
+            description="Beginner course",
+            category="course",
+            instructor="Krenz",
+            platform="Coloso",
+            status="FULFILLED",
+            priority="HIGH",
+            password="abc",
+            msg_ids=[1, 2],
         )
         item = raw.to_domain()
         assert isinstance(item, CourseItem)
@@ -27,7 +33,9 @@ class TestRawDigestItemConversion:
 
     def test_to_file(self):
         raw = RawDigestItem(
-            title="Pack", description="Archive", category="file",
+            title="Pack",
+            description="Archive",
+            category="file",
             password="wf6g",
         )
         item = raw.to_domain()
@@ -36,8 +44,11 @@ class TestRawDigestItemConversion:
 
     def test_to_discussion(self):
         raw = RawDigestItem(
-            title="SAI vs CSP", description="Tool debate", category="discussion",
-            instructor="Kalen Chock", platform="Coloso",  # platform should be ignored
+            title="SAI vs CSP",
+            description="Tool debate",
+            category="discussion",
+            instructor="Kalen Chock",
+            platform="Coloso",  # platform should be ignored
         )
         item = raw.to_domain()
         assert isinstance(item, DiscussionItem)
@@ -46,8 +57,11 @@ class TestRawDigestItemConversion:
 
     def test_to_request(self):
         raw = RawDigestItem(
-            title="Some Course", description="Want it", category="request",
-            status="UNFULFILLED", priority="LOW",
+            title="Some Course",
+            description="Want it",
+            category="request",
+            status="UNFULFILLED",
+            priority="LOW",
         )
         item = raw.to_domain()
         assert isinstance(item, RequestItem)
@@ -55,14 +69,18 @@ class TestRawDigestItemConversion:
 
     def test_to_announcement(self):
         raw = RawDigestItem(
-            title="Event", description="Live stream", category="announcement",
+            title="Event",
+            description="Live stream",
+            category="announcement",
         )
         item = raw.to_domain()
         assert isinstance(item, AnnouncementItem)
 
     def test_unknown_category_defaults_to_course(self):
         raw = RawDigestItem(
-            title="Unknown", description="x", category="unknown_type",
+            title="Unknown",
+            description="x",
+            category="unknown_type",
         )
         item = raw.to_domain()
         assert isinstance(item, CourseItem)
@@ -72,12 +90,16 @@ class TestSummarizerOutputSchemaJsonParsing:
     def test_parse_json_string_items(self):
         """Claude SDK sometimes returns list fields as JSON strings."""
         data = {
-            "items": json.dumps([
-                {"title": "T1", "description": "D1", "category": "course"},
-            ]),
-            "key_links": json.dumps([
-                {"title": "L1", "url": "http://example.com"},
-            ]),
+            "items": json.dumps(
+                [
+                    {"title": "T1", "description": "D1", "category": "course"},
+                ]
+            ),
+            "key_links": json.dumps(
+                [
+                    {"title": "L1", "url": "http://example.com"},
+                ]
+            ),
         }
         schema = SummarizerOutputSchema.model_validate(data)
         assert len(schema.items) == 1

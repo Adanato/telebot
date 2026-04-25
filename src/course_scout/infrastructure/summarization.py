@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 import re
+from typing import cast
 
 from course_scout.domain.models import ChannelDigest, TelegramMessage
 from course_scout.domain.services import ScraperInterface, SummarizerInterface
@@ -124,15 +125,21 @@ class OrchestratedSummarizer(SummarizerInterface):
 
             # Build a per-call orchestrator with the chosen model
             call_orchestrator = (
-                self.orchestrator if chosen_model == self.assigned_model
+                self.orchestrator
+                if chosen_model == self.assigned_model
                 else self._make_orchestrator(chosen_model)
             )
 
             if len(chunks) == 1:
-                draft = await self._summarize_chunk(chunks[0], topic_title, digest_date, call_orchestrator)
+                draft = await self._summarize_chunk(
+                    chunks[0], topic_title, digest_date, call_orchestrator
+                )  # noqa: E501
             else:
                 chunk_summaries = await asyncio.gather(
-                    *[self._summarize_chunk(c, topic_title, digest_date, call_orchestrator) for c in chunks]
+                    *[
+                        self._summarize_chunk(c, topic_title, digest_date, call_orchestrator)
+                        for c in chunks
+                    ]  # noqa: E501
                 )
                 draft = self._merge_summaries(chunk_summaries)
 
@@ -203,7 +210,7 @@ class OrchestratedSummarizer(SummarizerInterface):
     _MAX_IMAGES_PER_CALL = 20
     _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB per image
 
-    async def _summarize_chunk(
+    async def _summarize_chunk(  # noqa: C901
         self,
         chunk: list[StructuredMessage],
         topic_title: str,
@@ -232,19 +239,21 @@ class OrchestratedSummarizer(SummarizerInterface):
                 if not m.media_path:
                     continue
                 try:
-                    if os.path.exists(m.media_path) \
-                            and os.path.getsize(m.media_path) <= self._MAX_IMAGE_BYTES:
+                    if (
+                        os.path.exists(m.media_path)
+                        and os.path.getsize(m.media_path) <= self._MAX_IMAGE_BYTES
+                    ):
                         image_msgs.append(m)
                 except OSError:
                     pass
             image_msgs.sort(key=lambda m: m.id, reverse=True)
             if len(image_msgs) > self._MAX_IMAGES_PER_CALL:
-                dropped = image_msgs[self._MAX_IMAGES_PER_CALL:]
+                dropped = image_msgs[self._MAX_IMAGES_PER_CALL :]
                 logger.info(
                     f"[{topic_title}] dropping {len(dropped)} image(s); "
                     f"captioning only {self._MAX_IMAGES_PER_CALL} most recent"
                 )
-                image_msgs = image_msgs[:self._MAX_IMAGES_PER_CALL]
+                image_msgs = image_msgs[: self._MAX_IMAGES_PER_CALL]
 
             # Caption in parallel. Map path → caption.
             if image_msgs:
@@ -279,7 +288,8 @@ class OrchestratedSummarizer(SummarizerInterface):
             ),
         )
         summarizer = (orchestrator or self.orchestrator).get_summarizer_agent()
-        return await summarizer.run(summarizer_input)
+        result = await summarizer.run(summarizer_input)
+        return cast(SummarizerOutputSchema, result)
 
     @staticmethod
     def _merge_summaries(summaries: list[SummarizerOutputSchema]) -> SummarizerOutputSchema:
@@ -294,9 +304,7 @@ class OrchestratedSummarizer(SummarizerInterface):
             key_links=merged_links,
         )
 
-    def _prepare_structured_input(
-        self, messages: list[TelegramMessage]
-    ) -> list[StructuredMessage]:
+    def _prepare_structured_input(self, messages: list[TelegramMessage]) -> list[StructuredMessage]:
         """Convert domain messages to structured agent input.
 
         Inline-annotates `content` with signals the parser otherwise wouldn't see:
@@ -312,8 +320,12 @@ class OrchestratedSummarizer(SummarizerInterface):
                 content = f"{content}\n[File: {m.document_filename}]"
             if m.web_preview_title or m.web_preview_description:
                 preview_parts = [
-                    p for p in (m.web_preview_site, m.web_preview_title,
-                                 (m.web_preview_description or "")[:200])
+                    p
+                    for p in (
+                        m.web_preview_site,
+                        m.web_preview_title,
+                        (m.web_preview_description or "")[:200],
+                    )
                     if p
                 ]
                 if preview_parts:
@@ -402,9 +414,7 @@ class OrchestratedSummarizer(SummarizerInterface):
         if batch_cid and self.scraper:
             full_cid = f"-100{batch_cid}" if not batch_cid.startswith("-") else batch_cid
             try:
-                fetched = await self.scraper.get_message_by_id(
-                    full_cid, msg_id, topic_id=topic_id
-                )
+                fetched = await self.scraper.get_message_by_id(full_cid, msg_id, topic_id=topic_id)
                 return fetched.link if fetched else None
             except Exception as e:
                 logger.warning(f"Link repair failed for msg {msg_id}: {e}")

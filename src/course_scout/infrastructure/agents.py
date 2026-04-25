@@ -5,9 +5,9 @@ Agents:
 - VerifierAgent: Cross-references summary with original messages.
 """
 
+import asyncio
 import json
 import logging
-import asyncio
 import time
 from enum import Enum
 
@@ -99,15 +99,15 @@ class RawDigestItem(BaseModel):
 
     def to_domain(self) -> CourseItem | FileItem | DiscussionItem | RequestItem | AnnouncementItem:
         """Convert flat LLM output to the correct discriminated domain type."""
-        shared = dict(
-            title=self.title,
-            description=self.description,
-            msg_ids=self.msg_ids,
-            links=self.links,
-            author=self.author,
-            instructor=self.instructor,
-            priority=self.priority,
-        )
+        shared = {
+            "title": self.title,
+            "description": self.description,
+            "msg_ids": self.msg_ids,
+            "links": self.links,
+            "author": self.author,
+            "instructor": self.instructor,
+            "priority": self.priority,
+        }
         actionable = dict(
             **shared,
             platform=self.platform,
@@ -144,7 +144,6 @@ class SummarizerOutputSchema(BaseModel):
     def to_domain_items(self) -> list:
         """Convert raw LLM items to discriminated domain types."""
         return [item.to_domain() for item in self.items]
-
 
 
 # --- Synchronous Rate Limiter ---
@@ -225,8 +224,9 @@ class AIAgent:
                     # Extract image attachments from SummarizerInputSchema messages
                     # (None for other input types).
                     media_paths: list[str] = []
-                    if hasattr(input_data, "messages"):
-                        for m in input_data.messages:
+                    msgs = getattr(input_data, "messages", None)
+                    if msgs:
+                        for m in msgs:
                             mp = getattr(m, "media_path", None)
                             if mp:
                                 media_paths.append(mp)
@@ -246,7 +246,7 @@ class AIAgent:
                     logger.info(f"Agent {model} request completed.")
                     return result
 
-                except asyncio.TimeoutError as e:
+                except TimeoutError as e:
                     last_error = e
                     retries += 1
                     logger.warning(
@@ -371,9 +371,12 @@ RULES:
         self.effort = effort
         self.custom_prompt = system_prompt
 
-        self.summarizer_models = summarizer_model or [ClaudeModel.SONNET]
-        if isinstance(self.summarizer_models, str):
-            self.summarizer_models = [self.summarizer_models]
+        if summarizer_model is None:
+            self.summarizer_models: list[str] = [str(ClaudeModel.SONNET)]
+        elif isinstance(summarizer_model, str):
+            self.summarizer_models = [summarizer_model]
+        else:
+            self.summarizer_models = [str(m) for m in summarizer_model]
 
         self.rate_limiter = RateLimiter(rpm=50)
 
@@ -387,9 +390,11 @@ RULES:
 
         if model in self._OPENAI_PROVIDERS:
             import os
+
             cfg = self._OPENAI_PROVIDERS[model]
             api_key = os.environ.get(cfg["env_key"], "")
             import os as _os
+
             proxy = _os.environ.get("DEEPSEEK_PROXY")
             provider = OpenAIProvider(
                 api_key=api_key,

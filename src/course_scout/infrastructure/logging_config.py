@@ -2,7 +2,6 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-
 # Primary log directory: overridable via env var (COURSE_SCOUT_LOG_DIR) for
 # production use, defaults to /tmp/course-scout so logs are world-readable and
 # tail-able without needing to be in the project directory.

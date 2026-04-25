@@ -119,6 +119,11 @@ async def _run_digest_background(
             peer = resolved_channel
 
         digest = await use_case.execute(peer, topic_id=rid, lookback_days=lookback_days)
+        if digest is None:
+            JOBS[job_id]["status"] = "completed"
+            JOBS[job_id]["result"] = "No messages found for the requested period."
+            logger.info(f"Job {job_id} completed with no messages.")
+            return
         response = digest.to_markdown()
 
         if pdf:

@@ -46,5 +46,5 @@ USER appuser
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Command to run the worker
-CMD ["python", "-m", "telebot.application.worker"]
+# Default: run a scan. Override in docker-compose for other commands.
+CMD ["course-scout", "scan"]

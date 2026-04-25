@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 
 import typer
 
@@ -85,9 +85,13 @@ async def _handle_digest_delivery(
 
         if send_to:
             typer.echo(f"\n📨 Sending PDF to {send_to}...")
+            from typing import Any
+
             from telethon import TelegramClient
 
-            client = TelegramClient(settings.session_path, settings.tg_api_id, settings.tg_api_hash)
+            client: Any = TelegramClient(
+                settings.session_path, settings.tg_api_id, settings.tg_api_hash
+            )
             await client.connect()
             try:
                 try:
@@ -183,6 +187,7 @@ def _setup_run_logs():
     main log and any per-topic log from the same parent directory.
     """
     from course_scout.infrastructure.logging_config import DEFAULT_LOG_DIR
+
     run_id = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     root = os.environ.get("COURSE_SCOUT_LOG_DIR", DEFAULT_LOG_DIR)
     run_dir = os.path.join(root, "scans", run_id)
@@ -231,7 +236,7 @@ async def _fetch_all_topics(scraper, tasks, start_date, end_date):
     return fetched
 
 
-async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):
+async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):  # noqa: C901
     """Scan all tasks: fetch messages sequentially, then summarize in parallel."""
     from datetime import timedelta
     from zoneinfo import ZoneInfo
@@ -293,6 +298,7 @@ async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):
                 # Pin-diff: run against cache, prepend to summaries if changed.
                 # Swallowed errors can't break the main scan.
                 from course_scout.infrastructure.pins import diff_and_record
+
                 try:
                     pin_md = await diff_and_record(scraper, task.channel_id, task.topic_id)
                     if pin_md:
@@ -305,9 +311,14 @@ async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):
                 topic_log.info(f"Completed: {msg_count} items extracted")
                 typer.echo(f"   ✅ {name}: {msg_count} items")
                 # Log usage to topic file
-                provider = list(summarizer.orchestrator._providers.values())[0] if summarizer.orchestrator._providers else None
-                if hasattr(provider, "usage"):
-                    for call in provider.usage.calls:
+                provider = (
+                    list(summarizer.orchestrator._providers.values())[0]
+                    if summarizer.orchestrator._providers
+                    else None
+                )  # noqa: E501
+                usage = getattr(provider, "usage", None)
+                if usage is not None:
+                    for call in usage.calls:
                         topic_log.info(
                             f"  {call['model']}: {call['input_tokens']} in / "
                             f"{call['output_tokens']} out / {call['duration_ms']}ms"
@@ -347,20 +358,27 @@ def _override_log(
 ) -> None:
     """Append a single override event to the JSONL audit log."""
     import json
-    from datetime import datetime, timezone
+    from datetime import datetime
     from pathlib import Path
+
     path = Path(_OVERRIDE_LOG_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({
-            "ts": datetime.now(timezone.utc).isoformat(),
-            "stage": stage,
-            "topic": topic,
-            "before": before,
-            "after": after,  # None if item was dropped
-            "title": title[:120],
-            "reason": reason,
-        }, ensure_ascii=False) + "\n")
+        f.write(
+            json.dumps(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "stage": stage,
+                    "topic": topic,
+                    "before": before,
+                    "after": after,  # None if item was dropped
+                    "title": title[:120],
+                    "reason": reason,
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
 
 
 def _reclassify_by_topic_name(digest, topic_name: str) -> None:
@@ -388,15 +406,22 @@ def _reclassify_by_topic_name(digest, topic_name: str) -> None:
         # Dedupe: if we already kept an item with this title, skip
         key = item.title.strip().lower()
         if key in seen_titles:
-            _override_log("reclassify", topic_name, item.category, None,
-                          item.title, "duplicate title")
+            _override_log(
+                "reclassify", topic_name, item.category, None, item.title, "duplicate title"
+            )
             continue
         seen_titles.add(key)
         if item.category == "request":
             new_items.append(item)
         else:
-            _override_log("reclassify", topic_name, item.category, "request",
-                          item.title, "request-topic → request")
+            _override_log(
+                "reclassify",
+                topic_name,
+                item.category,
+                "request",
+                item.title,
+                "request-topic → request",
+            )
             # Convert FileItem/CourseItem/AnnouncementItem → RequestItem
             data = item.model_dump(exclude={"category"})
             new_items.append(RequestItem(**data))
@@ -409,11 +434,11 @@ def _reclassify_by_topic_name(digest, topic_name: str) -> None:
 # if nothing fits. Enforces the prompt restriction in Python, since prompt-only
 # enforcement leaks at semantic boundaries (e.g. Gumroad + media attachments).
 _PROMPT_ALLOWED_CATEGORIES: dict[str, set[str]] = {
-    "course_requests":   {"request"},
-    "file_sharing":      {"file", "discussion"},
+    "course_requests": {"request"},
+    "file_sharing": {"file", "discussion"},
     "discussion_lounge": {"discussion", "course", "file", "request"},
-    "course_review":     {"course", "discussion"},
-    "language_chat":     {"file", "course", "discussion", "request", "announcement"},
+    "course_review": {"course", "discussion"},
+    "language_chat": {"file", "course", "discussion", "request", "announcement"},
 }
 
 # Remap rules for each allowlist violation. If the parser emits X in a channel
@@ -421,19 +446,24 @@ _PROMPT_ALLOWED_CATEGORIES: dict[str, set[str]] = {
 # earlier fallbacks preferred. `None` = drop the item entirely.
 _CATEGORY_REMAP: dict[tuple[str, str], str | None] = {
     # file_sharing: no courses, no requests, no announcements
-    ("file_sharing", "course"):       "file",         # storefront-like items → file (likely has a download in context)
-    ("file_sharing", "request"):      None,           # drop — re-upload asks are noise here
-    ("file_sharing", "announcement"): "discussion",   # community news → discussion
+    (
+        "file_sharing",
+        "course",
+    ): "file",  # storefront-like items → file (likely has a download in context)  # noqa: E501
+    ("file_sharing", "request"): None,  # drop — re-upload asks are noise here
+    ("file_sharing", "announcement"): "discussion",  # community news → discussion
     # discussion_lounge: requests allowed; only announcement gets remapped
     ("discussion_lounge", "announcement"): "discussion",
     # course_review: only course + discussion
-    ("course_review", "file"):         "course",
-    ("course_review", "request"):      None,
+    ("course_review", "file"): "course",
+    ("course_review", "request"): None,
     ("course_review", "announcement"): "discussion",
 }
 
 
-def _enforce_category_allowlist(digest, system_prompt_name: str | None, topic_name: str = "") -> None:
+def _enforce_category_allowlist(
+    digest, system_prompt_name: str | None, topic_name: str = ""
+) -> None:  # noqa: E501
     """Drop/remap items whose category is outside the prompt's allowlist.
 
     Runtime guardrail — prompt restrictions leak at semantic boundaries (e.g. a
@@ -449,11 +479,19 @@ def _enforce_category_allowlist(digest, system_prompt_name: str | None, topic_na
         return
 
     from course_scout.domain.models import (
-        CourseItem, FileItem, DiscussionItem, RequestItem, AnnouncementItem,
+        AnnouncementItem,
+        CourseItem,
+        DiscussionItem,
+        FileItem,
+        RequestItem,
     )
+
     category_to_cls = {
-        "course": CourseItem, "file": FileItem, "discussion": DiscussionItem,
-        "request": RequestItem, "announcement": AnnouncementItem,
+        "course": CourseItem,
+        "file": FileItem,
+        "discussion": DiscussionItem,
+        "request": RequestItem,
+        "announcement": AnnouncementItem,
     }
 
     new_items = []
@@ -464,18 +502,31 @@ def _enforce_category_allowlist(digest, system_prompt_name: str | None, topic_na
         # Violation — look up remap
         remap_target = _CATEGORY_REMAP.get((system_prompt_name, item.category))
         if remap_target is None:
-            _override_log("allowlist", topic_name, item.category, None,
-                          item.title, f"{system_prompt_name} drops {item.category}")
+            _override_log(
+                "allowlist",
+                topic_name,
+                item.category,
+                None,
+                item.title,
+                f"{system_prompt_name} drops {item.category}",
+            )
             continue
         target_cls = category_to_cls[remap_target]
         try:
             data = item.model_dump(exclude={"category"})
             new_items.append(target_cls(**data))
-            _override_log("allowlist", topic_name, item.category, remap_target,
-                          item.title, f"{system_prompt_name} remaps {item.category}→{remap_target}")
+            _override_log(
+                "allowlist",
+                topic_name,
+                item.category,
+                remap_target,
+                item.title,
+                f"{system_prompt_name} remaps {item.category}→{remap_target}",
+            )
         except Exception as e:
-            _override_log("allowlist", topic_name, item.category, None,
-                          item.title, f"remap failed: {e}")
+            _override_log(
+                "allowlist", topic_name, item.category, None, item.title, f"remap failed: {e}"
+            )
             continue
     digest.items = new_items
 
@@ -615,9 +666,7 @@ def _output_combined_report(all_results, pdf=False):
 
     # Build executive summary
     typer.echo("📝 Generating executive summary...")
-    exec_summary = asyncio.run(
-        _generate_executive_summary(all_results, today_str)
-    )
+    exec_summary = asyncio.run(_generate_executive_summary(all_results, today_str))
 
     combined_md = f"# Course Scout Daily Scan — {today_str}\n\n"
     combined_md += exec_summary + "\n\n---\n\n"
@@ -627,6 +676,7 @@ def _output_combined_report(all_results, pdf=False):
     # Rewrite known social URLs to app-scheme URIs so they open the native
     # app directly instead of bouncing through Telegram's in-app browser.
     from course_scout.infrastructure.deep_links import deep_linkify
+
     combined_md = deep_linkify(combined_md)
 
     md_path = os.path.join(report_dir, f"scan_{today_str}.md")
@@ -676,9 +726,7 @@ def scan(
         raise typer.Exit(code=1)
 
     label = "today" if today else f"last {days} complete day(s)"
-    typer.echo(
-        f"━━━ Course Scout — Scanning {len(settings.tasks)} topics ({label}) ━━━\n"
-    )
+    typer.echo(f"━━━ Course Scout — Scanning {len(settings.tasks)} topics ({label}) ━━━\n")
 
     all_results = asyncio.run(
         _scan_all_tasks(scraper, settings, settings.resolved_tasks, days, include_today=today)

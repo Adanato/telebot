@@ -19,7 +19,7 @@ class GenerateDigestUseCase:
         timezone: str = "UTC",
         window_mode: str = "rolling",
         today_only: bool = False,
-    ) -> ChannelDigest:
+    ) -> ChannelDigest | None:
         """Execute the digest generation pipeline."""
         tz = ZoneInfo(timezone)
         now = datetime.now(tz)

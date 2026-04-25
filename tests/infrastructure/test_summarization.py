@@ -27,15 +27,20 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
         sum_out = SummarizerOutputSchema(
             items=[
                 RawDigestItem(
-                    title="Item 1", description="Desc", category="course",
-                    links=["http://l1"], msg_ids=[1],
+                    title="Item 1",
+                    description="Desc",
+                    category="course",
+                    links=["http://l1"],
+                    msg_ids=[1],
                 )
             ],
             key_links=[LinkItem(title="T1", url="http://l1")],
         )
         mock_summarizer_agent.run = AsyncMock(return_value=sum_out)
 
-        messages = [TelegramMessage(id=1, text="msg1", date=datetime.datetime.now(), link="http://l1")]
+        messages = [
+            TelegramMessage(id=1, text="msg1", date=datetime.datetime.now(), link="http://l1")
+        ]
         digest = await summarizer.summarize(messages, topic_id=123)
 
         self.assertIsInstance(digest, ChannelDigest)
@@ -47,7 +52,9 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
         mock_orch = MockOrch.return_value
         mock_orch.get_summarizer_agent.side_effect = Exception("AI Overload")
         summarizer = Summarizer()
-        messages = [TelegramMessage(id=1, text="msg1", date=datetime.datetime.now(), link="http://l1")]
+        messages = [
+            TelegramMessage(id=1, text="msg1", date=datetime.datetime.now(), link="http://l1")
+        ]
 
         digest = await summarizer.summarize(messages, topic_id=123)
 
@@ -66,7 +73,9 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
             items=[
                 RawDigestItem(title="F1", description="File", category="file", links=["http://f"]),
                 RawDigestItem(title="D1", description="Disc", category="discussion"),
-                RawDigestItem(title="R1", description="Req", category="request", links=["http://r"]),
+                RawDigestItem(
+                    title="R1", description="Req", category="request", links=["http://r"]
+                ),
             ],
             key_links=[],
         )
@@ -91,10 +100,14 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
 
         sum_out = SummarizerOutputSchema(
             items=[
-                RawDigestItem(title="C1", description="Course", category="course", instructor="Krenz"),
+                RawDigestItem(
+                    title="C1", description="Course", category="course", instructor="Krenz"
+                ),  # noqa: E501
                 RawDigestItem(title="F1", description="File", category="file", password="abc"),
                 RawDigestItem(title="D1", description="Discussion", category="discussion"),
-                RawDigestItem(title="R1", description="Request", category="request", status="UNFULFILLED"),
+                RawDigestItem(
+                    title="R1", description="Request", category="request", status="UNFULFILLED"
+                ),  # noqa: E501
             ],
             key_links=[],
         )
@@ -121,8 +134,11 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
         sum_out = SummarizerOutputSchema(
             items=[
                 RawDigestItem(
-                    title="Discussion", description="Talk", category="discussion",
-                    msg_ids=[100, 101], links=[],  # No links from LLM
+                    title="Discussion",
+                    description="Talk",
+                    category="discussion",
+                    msg_ids=[100, 101],
+                    links=[],  # No links from LLM
                 ),
             ],
             key_links=[],
@@ -130,8 +146,12 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
         mock_agent.run = AsyncMock(return_value=sum_out)
 
         messages = [
-            TelegramMessage(id=100, text="msg1", date=datetime.datetime.now(), link="https://t.me/c/123/456/100"),
-            TelegramMessage(id=101, text="msg2", date=datetime.datetime.now(), link="https://t.me/c/123/456/101"),
+            TelegramMessage(
+                id=100, text="msg1", date=datetime.datetime.now(), link="https://t.me/c/123/456/100"
+            ),
+            TelegramMessage(
+                id=101, text="msg2", date=datetime.datetime.now(), link="https://t.me/c/123/456/101"
+            ),
         ]
         digest = await summarizer.summarize(messages)
 
@@ -144,7 +164,9 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
         """Verify message links are NOT appended to content."""
         summarizer = Summarizer()
         messages = [
-            TelegramMessage(id=1, text="Hello", date=datetime.datetime.now(), link="https://t.me/c/123/1"),
+            TelegramMessage(
+                id=1, text="Hello", date=datetime.datetime.now(), link="https://t.me/c/123/1"
+            ),
         ]
         structured = summarizer._prepare_structured_input(messages)
         self.assertEqual(structured[0].content, "Hello")
@@ -154,7 +176,8 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
 class TestGrounding(unittest.TestCase):
     def test_ground_items_keeps_external_urls(self):
         item = CourseItem(
-            title="Test", description="x",
+            title="Test",
+            description="x",
             links=["https://coloso.global/en/products/test"],
         )
         Summarizer._ground_items([item], link_map={}, raw_urls=set())
@@ -162,26 +185,34 @@ class TestGrounding(unittest.TestCase):
 
     def test_ground_items_keeps_valid_tme_links(self):
         item = FileItem(
-            title="Test", description="x",
+            title="Test",
+            description="x",
             msg_ids=[100],
             links=["https://t.me/c/123/456/100"],
         )
-        Summarizer._ground_items([item], link_map={100: "https://t.me/c/123/456/100"}, raw_urls=set())
+        Summarizer._ground_items(
+            [item], link_map={100: "https://t.me/c/123/456/100"}, raw_urls=set()
+        )  # noqa: E501
         self.assertEqual(len(item.links), 1)
 
     def test_ground_items_strips_hallucinated_tme_links(self):
         item = CourseItem(
-            title="Test", description="x",
+            title="Test",
+            description="x",
             msg_ids=[100],
             links=["https://t.me/c/123/456/999999"],  # msg 999999 doesn't exist
         )
-        Summarizer._ground_items([item], link_map={100: "https://t.me/c/123/456/100"}, raw_urls=set())
+        Summarizer._ground_items(
+            [item], link_map={100: "https://t.me/c/123/456/100"}, raw_urls=set()
+        )  # noqa: E501
         self.assertEqual(len(item.links), 0)
 
     def test_backfill_links_adds_missing_tme(self):
         item = DiscussionItem(
-            title="Test", description="x",
-            msg_ids=[100, 101], links=[],
+            title="Test",
+            description="x",
+            msg_ids=[100, 101],
+            links=[],
         )
         link_map = {
             100: "https://t.me/c/123/456/100",
@@ -192,7 +223,8 @@ class TestGrounding(unittest.TestCase):
 
     def test_backfill_links_no_duplicates(self):
         item = DiscussionItem(
-            title="Test", description="x",
+            title="Test",
+            description="x",
             msg_ids=[100],
             links=["https://t.me/c/123/456/100"],  # Already present
         )

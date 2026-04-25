@@ -55,6 +55,12 @@ class CourseScoutWorker:
 
         logger.info(f"🚀 Starting task: {name} (Channel: {channel_id}, Topic: {topic_id})")
 
+        if channel_id is None:
+            logger.error(f"Task {name} missing channel_id; skipping.")
+            return
+
+        pdf_path: str | None = None
+
         try:
             # Execute Digest
             digest = await self.use_case.execute(
@@ -105,7 +111,7 @@ class CourseScoutWorker:
                 task_name=name,
                 md_path=md_path,
                 pdf_path=pdf_path if self.settings.report_format == "pdf" else None,
-                summary="\n".join(digest.summaries)
+                summary="\n".join(digest.summaries),
             )
 
             logger.info(f"✅ Completed and persisted task: {name}")

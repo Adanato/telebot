@@ -151,13 +151,13 @@ class PDFRenderer:
         # Convert bare URLs to clickable markdown links
         # Matches URLs not already inside []() or preceded by ](
         md = re.sub(
-            r'(?<!\]\()(?<!\[)(https?://[^\s\),]+)',
-            r'[\1](\1)',
+            r"(?<!\]\()(?<!\[)(https?://[^\s\),]+)",
+            r"[\1](\1)",
             md,
         )
 
         # Fix double-wrapped links: [[url](url)](url) → [url](url)
-        md = re.sub(r'\[\[([^\]]+)\]\(([^\)]+)\)\]\([^\)]+\)', r'[\1](\2)', md)
+        md = re.sub(r"\[\[([^\]]+)\]\(([^\)]+)\)\]\([^\)]+\)", r"[\1](\2)", md)
 
         # Parenthesized URL lists after bold titles are already handled
         # by the bare URL conversion above

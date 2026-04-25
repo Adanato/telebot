@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Any
 
 from telethon import TelegramClient
 
@@ -30,7 +31,7 @@ class TelethonNotifier(NotifierInterface):
         if self.bot_token:
             session = f"bot_{self.session_path}"
 
-        client = TelegramClient(session, self.api_id, self.api_hash)
+        client: Any = TelegramClient(session, self.api_id, self.api_hash)
         await client.connect()
         try:
             if self.bot_token and not await client.is_user_authorized():

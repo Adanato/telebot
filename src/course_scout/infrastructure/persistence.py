@@ -34,7 +34,7 @@ class SqliteReportRepository:
         task_name: str,
         md_path: str | None = None,
         pdf_path: str | None = None,
-        summary: str | None = None
+        summary: str | None = None,
     ):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(

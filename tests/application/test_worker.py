@@ -16,10 +16,12 @@ class TestCourseScoutWorker(unittest.IsolatedAsyncioTestCase):
             mock_load.return_value = self.mock_settings
 
             # Patch collaborators in __init__
-            with patch("course_scout.application.worker.TelethonScraper"), \
-                 patch("course_scout.application.worker.OrchestratedSummarizer"), \
-                 patch("course_scout.application.worker.PDFRenderer"), \
-                 patch("course_scout.application.worker.TelethonNotifier"):
+            with (
+                patch("course_scout.application.worker.TelethonScraper"),
+                patch("course_scout.application.worker.OrchestratedSummarizer"),
+                patch("course_scout.application.worker.PDFRenderer"),
+                patch("course_scout.application.worker.TelethonNotifier"),
+            ):
                 self.worker = CourseScoutWorker(config_path="config.yaml")
 
                 # Manually set mocks for control
@@ -67,6 +69,7 @@ class TestCourseScoutWorker(unittest.IsolatedAsyncioTestCase):
     @patch("course_scout.application.worker.CourseScoutWorker.start")
     def test_main_startup(self, mock_start):
         from course_scout.application.worker import main
+
         with patch("asyncio.run"):
-             main()
+            main()
         self.assertTrue(mock_start.called)

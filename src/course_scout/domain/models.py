@@ -1,8 +1,7 @@
 import datetime
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
-
 
 # ── Link helpers ──
 
@@ -61,10 +60,12 @@ class _ActionableItem(BaseModel):
     )
     status: str | None = Field(None, description="FULFILLED, UNFULFILLED, or DISCUSSING")
     priority: str | None = Field(None, description=_PRIORITY_HELP)
-    password: str | None = Field(None, description="Download password, preserved exactly as written")
+    password: str | None = Field(
+        None, description="Download password, preserved exactly as written"
+    )  # noqa: E501
 
     def render(self) -> str:
-        """Render as: [marker] **Title** — meta ([course](url) · [post](url))  desc"""
+        """Render as: [marker] **Title** — meta ([course](url) · [post](url))  desc."""
         course_url, tg_links = _split_links(self.links)
         first_post = tg_links[0] if tg_links else None
 
@@ -119,7 +120,7 @@ class DiscussionItem(BaseModel):
     priority: str | None = Field(None, description=_PRIORITY_HELP)
 
     def render(self) -> str:
-        """Render as: **Title** — Instructor ([thread])  desc  msgs: [#1], [#2]"""
+        """Render as: **Title** — Instructor ([thread])  desc  msgs: [#1], [#2]."""
         _, tg_links = _split_links(self.links)
         first_post = tg_links[0] if tg_links else None
 
@@ -141,7 +142,7 @@ class DiscussionItem(BaseModel):
 
 # Discriminated union — Pydantic picks the right type based on `category` field
 DigestItem = Annotated[
-    Union[CourseItem, FileItem, DiscussionItem, RequestItem, AnnouncementItem],
+    CourseItem | FileItem | DiscussionItem | RequestItem | AnnouncementItem,
     Field(discriminator="category"),
 ]
 

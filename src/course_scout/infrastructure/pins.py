@@ -69,9 +69,7 @@ class PinDiff:
         return not (self.added or self.removed or self.changed)
 
 
-def diff_pins(
-    cached_entry: dict | None, current: list[TelegramMessage]
-) -> PinDiff:
+def diff_pins(cached_entry: dict | None, current: list[TelegramMessage]) -> PinDiff:
     """Diff current pinned set against the cached snapshot.
 
     `cached_entry` shape: {"pinned_ids": [int], "snapshots": {id_str: {...}}}
@@ -140,9 +138,7 @@ def format_pin_diff_markdown(diff: PinDiff) -> str | None:
     return "\n".join(lines)
 
 
-async def diff_and_record(
-    scraper, channel_id: str | int, topic_id: int | None
-) -> str | None:
+async def diff_and_record(scraper, channel_id: str | int, topic_id: int | None) -> str | None:
     """Orchestration helper: fetch pins, diff, persist, return markdown block.
 
     Designed to be called from the per-topic scan loop alongside summarization.

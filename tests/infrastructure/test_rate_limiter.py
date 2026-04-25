@@ -10,7 +10,7 @@ class TestRateLimiter(unittest.TestCase):
     def test_rate_limiter_waits(self, mock_sleep):
         # We don't mock time.time here, instead we'll force a wait
         limiter = RateLimiter(rpm=60000)  # Very fast
-        limiter.last_request_time = time.time() + 10.0 # Future
+        limiter.last_request_time = time.time() + 10.0  # Future
 
         limiter.acquire()
 

@@ -8,6 +8,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 from openai import AsyncOpenAI
@@ -92,14 +93,16 @@ class OpenAIUsageStats:
         cost = _estimate_cost(model, input_tok, output_tok, cache_hit, cache_miss)
         self.total_cost_usd += cost
 
-        self.calls.append({
-            "model": model,
-            "input_tokens": input_tok,
-            "output_tokens": output_tok,
-            "cache_read": cache_hit,
-            "duration_ms": duration_ms,
-            "cost_usd": cost,
-        })
+        self.calls.append(
+            {
+                "model": model,
+                "input_tokens": input_tok,
+                "output_tokens": output_tok,
+                "cache_read": cache_hit,
+                "duration_ms": duration_ms,
+                "cost_usd": cost,
+            }
+        )
         logger.info(
             f"[{model}] {input_tok} in / {output_tok} out / "
             f"{cache_hit} cache_hit / {duration_ms}ms / ${cost:.4f}"
@@ -120,7 +123,7 @@ class OpenAIUsageStats:
 class OpenAIProvider(AIProvider):
     """Provider for OpenAI-compatible APIs (DeepSeek, OpenAI, Together, etc.)."""
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         api_key: str,
         base_url: str = "https://api.deepseek.com",
@@ -160,7 +163,7 @@ class OpenAIProvider(AIProvider):
             f"\n\nRESPOND WITH VALID JSON matching this schema:\n"
             f"```json\n{json.dumps(schema, indent=2)}\n```"
         )
-        messages = [
+        messages: list[Any] = [
             {"role": "system", "content": system_prompt + schema_instruction},
             {"role": "user", "content": input_data},
         ]

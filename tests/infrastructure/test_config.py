@@ -12,20 +12,26 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(task.channel_id, "@test")
 
     def test_settings_default_values(self):
-        with patch.dict(os.environ, {
-            "TG_API_ID": "123",
-            "TG_API_HASH": "hash",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "TG_API_ID": "123",
+                "TG_API_HASH": "hash",
+            },
+        ):
             settings = Settings()
             self.assertEqual(settings.tg_api_id, 123)
             self.assertEqual(settings.session_path, "course_scout.session")
 
     @patch("course_scout.infrastructure.config.yaml.safe_load")
     @patch("builtins.open", new_callable=MagicMock)
-    @patch.dict(os.environ, {
-        "TG_API_ID": "123",
-        "TG_API_HASH": "hash",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "TG_API_ID": "123",
+            "TG_API_HASH": "hash",
+        },
+    )
     def test_load_settings_success(self, mock_open, mock_yaml):
         mock_yaml.return_value = {
             "global": {"lookback_days": 2},
@@ -39,10 +45,13 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(settings.lookback_days, 2)
 
     @patch("course_scout.infrastructure.config.os.path.exists", return_value=False)
-    @patch.dict(os.environ, {
-        "TG_API_ID": "123",
-        "TG_API_HASH": "hash",
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "TG_API_ID": "123",
+            "TG_API_HASH": "hash",
+        },
+    )
     def test_load_settings_file_not_found(self, mock_exists):
         settings = load_settings("non_existent.yaml")
         self.assertEqual(len(settings.tasks), 0)

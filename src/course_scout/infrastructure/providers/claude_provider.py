@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Any, Literal, cast
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -26,7 +27,7 @@ async def _stream_user_turn(content: str | list[dict]) -> AsyncIterator[dict]:
     bundled `claude` CLI subprocess to hang forever — stdin is never closed.
     This helper yields exactly one user turn, then the generator ends, which
     signals the SDK to close stdin and let the CLI respond.
-    """
+    """  # noqa: D205
     yield {
         "type": "user",
         "message": {"role": "user", "content": content},
@@ -65,14 +66,16 @@ class UsageStats:
         self.total_cache_read_tokens += cache_read
         self.total_cache_creation_tokens += cache_create
 
-        self.calls.append({
-            "model": model,
-            "input_tokens": input_tok,
-            "output_tokens": output_tok,
-            "cache_read": cache_read,
-            "duration_ms": result.duration_ms or 0,
-            "cost_usd": result.total_cost_usd or 0.0,
-        })
+        self.calls.append(
+            {
+                "model": model,
+                "input_tokens": input_tok,
+                "output_tokens": output_tok,
+                "cache_read": cache_read,
+                "duration_ms": result.duration_ms or 0,
+                "cost_usd": result.total_cost_usd or 0.0,
+            }
+        )
 
     def summary(self) -> str:
         """Return a formatted usage summary with Max plan budget estimate."""
@@ -120,7 +123,7 @@ class ClaudeProvider(AIProvider):
         input_data: str,
         output_schema: type,
         media_paths: list[str] | None = None,
-    ) -> any:
+    ) -> Any:
         """Generate structured output using Claude Agent SDK.
 
         If `media_paths` is provided, each path is attached to the user message
@@ -140,8 +143,8 @@ class ClaudeProvider(AIProvider):
             max_turns=5,
             setting_sources=[],
             allowed_tools=[],
-            thinking=self._thinking_config(),
-            effort=self.effort,
+            thinking=cast(Any, self._thinking_config()),
+            effort=cast(Literal["low", "medium", "high", "max"], self.effort),
             output_format={"type": "json_schema", "schema": schema},
         )
 
@@ -154,29 +157,31 @@ class ClaudeProvider(AIProvider):
             if content_blocks:
                 combined = [{"type": "text", "text": input_data}, *content_blocks]
                 prompt = _stream_user_turn(combined)
-                total_bytes = sum(
-                    len(b["source"]["data"]) * 3 // 4 for b in content_blocks
-                )
+                total_bytes = sum(len(b["source"]["data"]) * 3 // 4 for b in content_blocks)
                 logger.info(
                     f"[{model_id}] {len(content_blocks)} image(s) attached "
                     f"(~{total_bytes // 1024} KB)"
                 )
 
-        structured, tool_output, last_text = await self._collect_messages(
-            prompt, options, model_id
-        )
+        structured, tool_output, last_text = await self._collect_messages(prompt, options, model_id)
         return self._parse_output(output_schema, structured, tool_output, last_text)
 
     @staticmethod
     def _build_image_blocks(media_paths: list[str]) -> list[dict]:
         """Convert local image paths to base64 content blocks. Skips missing,
-        oversized, or non-image files."""
+        oversized, or non-image files.
+        """  # noqa: D205
         import base64
         import os
 
         MAX_BYTES = 5 * 1024 * 1024
-        SUPPORTED = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-                     ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
+        SUPPORTED = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+        }
         blocks: list[dict] = []
         for path in media_paths:
             if not path or not os.path.exists(path):
@@ -191,14 +196,16 @@ class ClaudeProvider(AIProvider):
                     continue
                 with open(path, "rb") as f:
                     data = base64.standard_b64encode(f.read()).decode("ascii")
-                blocks.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": data,
-                    },
-                })
+                blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": data,
+                        },
+                    }
+                )
             except OSError as e:
                 logger.warning(f"Skipping {path}: {e}")
         return blocks
@@ -278,12 +285,13 @@ class ClaudeProvider(AIProvider):
 
     @staticmethod
     def _repair_string_json_fields(data: dict) -> dict:
-        """If any field value is a JSON-string (list/object), parse it.
+        r"""If any field value is a JSON-string (list/object), parse it.
 
         Trims trailing whitespace/junk before parsing — the model occasionally
         emits `"[...]\n  "` which fails strict JSON parse.
         """
         import json
+
         repaired = {}
         for k, v in data.items():
             if isinstance(v, str):

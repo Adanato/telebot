@@ -87,6 +87,7 @@ def deep_linkify(markdown: str) -> str:
     Handles both inline markdown links `[text](https://...)` and bare
     URLs on their own. Leaves all other URLs untouched.
     """
+
     def _sub_md(m: re.Match[str]) -> str:
         display, url = m.group(1), m.group(2)
         deep = _rewrite_url(url)

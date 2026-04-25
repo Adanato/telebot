@@ -5,7 +5,6 @@ import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
-
 # Shared base prepended to every per-channel system prompt.
 # Documents output schema, gives 5 worked input/output examples spanning the
 # main category boundaries, and reinforces output-shape constraints that have
@@ -214,7 +213,7 @@ Output:
 ═══════════════════════════════════════════════════════════════════
 CHANNEL-SPECIFIC RULES (override the examples above where they conflict):
 ═══════════════════════════════════════════════════════════════════
-"""
+"""  # noqa: E501
 
 
 class TaskConfig(BaseModel):
@@ -315,7 +314,8 @@ class Settings(BaseSettings):
 
 
 def load_settings(config_path: str = "config.yaml") -> Settings:
-    settings = Settings()
+    # pydantic-settings reads required fields from env; pyright can't infer this.
+    settings = Settings()  # type: ignore[call-arg]
 
     if os.path.exists(config_path):
         with open(config_path) as f:

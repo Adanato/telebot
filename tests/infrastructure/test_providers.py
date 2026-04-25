@@ -19,9 +19,7 @@ class TestClaudeProvider(unittest.IsolatedAsyncioTestCase):
             name="StructuredOutput",
             input={"items": [], "key_links": [], "action_items": []},
         )
-        assistant_msg = AssistantMessage(
-            content=[tool_block], model="claude-sonnet-4-6"
-        )
+        assistant_msg = AssistantMessage(content=[tool_block], model="claude-sonnet-4-6")
         result_msg = ResultMessage(
             subtype="result",
             duration_ms=1000,

@@ -3,6 +3,7 @@
 Bypasses typer (which chokes on the negative channel ID) and runs the exact
 same scan pipeline as `course-scout scan` but filtered to one task.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -38,9 +39,7 @@ async def main() -> None:
         login_code=settings.login_code,
     )
 
-    results = await _scan_all_tasks(
-        scraper, settings, tasks, days=1, include_today=True
-    )
+    results = await _scan_all_tasks(scraper, settings, tasks, days=1, include_today=True)
 
     if not results:
         print("\nNo activity found.")

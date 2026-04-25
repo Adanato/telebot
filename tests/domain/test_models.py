@@ -11,7 +11,6 @@ from course_scout.domain.models import (
     TelegramMessage,
 )
 
-
 # ── TelegramMessage ──
 
 
@@ -42,9 +41,14 @@ def test_telegram_message_optional_fields():
 
 def test_course_item():
     item = CourseItem(
-        title="Krenz Color", description="Beginner color course",
-        instructor="Krenz", platform="Coloso", status="FULFILLED", priority="HIGH",
-        msg_ids=[100, 101], links=["https://coloso.global/krenz"],
+        title="Krenz Color",
+        description="Beginner color course",
+        instructor="Krenz",
+        platform="Coloso",
+        status="FULFILLED",
+        priority="HIGH",
+        msg_ids=[100, 101],
+        links=["https://coloso.global/krenz"],
     )
     assert item.category == "course"
     assert item.instructor == "Krenz"
@@ -53,8 +57,12 @@ def test_course_item():
 
 def test_file_item_with_password():
     item = FileItem(
-        title="Anatomy Pack", description="Split archive, 5 parts",
-        platform="Baidu Pan", password="wf6g", status="FULFILLED", priority="HIGH",
+        title="Anatomy Pack",
+        description="Split archive, 5 parts",
+        platform="Baidu Pan",
+        password="wf6g",
+        status="FULFILLED",
+        priority="HIGH",
         msg_ids=[200],
     )
     assert item.category == "file"
@@ -63,8 +71,11 @@ def test_file_item_with_password():
 
 def test_discussion_item_no_platform():
     item = DiscussionItem(
-        title="SAI vs CSP", description="Tool comparison thread",
-        instructor="Kalen Chock", priority="MEDIUM", msg_ids=[300, 301],
+        title="SAI vs CSP",
+        description="Tool comparison thread",
+        instructor="Kalen Chock",
+        priority="MEDIUM",
+        msg_ids=[300, 301],
     )
     assert item.category == "discussion"
     assert not hasattr(item, "platform")
@@ -73,8 +84,12 @@ def test_discussion_item_no_platform():
 
 def test_request_item():
     item = RequestItem(
-        title="Painting Light 102", description="Proko course",
-        instructor="Jeremy Vickery", platform="Proko", status="UNFULFILLED", priority="LOW",
+        title="Painting Light 102",
+        description="Proko course",
+        instructor="Jeremy Vickery",
+        platform="Proko",
+        status="UNFULFILLED",
+        priority="LOW",
     )
     assert item.category == "request"
     assert item.status == "UNFULFILLED"
@@ -82,7 +97,8 @@ def test_request_item():
 
 def test_announcement_item():
     item = AnnouncementItem(
-        title="New Course Drop", description="Available now",
+        title="New Course Drop",
+        description="Available now",
         priority="MEDIUM",
     )
     assert item.category == "announcement"
@@ -93,8 +109,12 @@ def test_announcement_item():
 
 def test_course_item_render_links():
     item = CourseItem(
-        title="Figure Sculpting", description="10-part archive",
-        instructor="Logan", platform="Telegram", status="FULFILLED", priority="HIGH",
+        title="Figure Sculpting",
+        description="10-part archive",
+        instructor="Logan",
+        platform="Telegram",
+        status="FULFILLED",
+        priority="HIGH",
         links=["https://flippednormals.com/product/123", "https://t.me/c/160/3018/100"],
     )
     md = item.render()
@@ -107,8 +127,10 @@ def test_course_item_render_links():
 
 def test_file_item_render_password():
     item = FileItem(
-        title="Color Pack", description="PDF handouts",
-        password="abc123", priority="HIGH",
+        title="Color Pack",
+        description="PDF handouts",
+        password="abc123",
+        priority="HIGH",
     )
     md = item.render()
     assert "**pwd: abc123**" in md
@@ -116,7 +138,8 @@ def test_file_item_render_password():
 
 def test_discussion_item_render_thread_and_msgs():
     item = DiscussionItem(
-        title="Tool Comparison", description="SAI vs CSP debate",
+        title="Tool Comparison",
+        description="SAI vs CSP debate",
         priority="MEDIUM",
         links=[
             "https://t.me/c/160/3077/500",
@@ -134,8 +157,10 @@ def test_discussion_item_render_thread_and_msgs():
 
 def test_request_item_render_low_priority():
     item = RequestItem(
-        title="Some Course", description="Unfulfilled",
-        status="UNFULFILLED", priority="LOW",
+        title="Some Course",
+        description="Unfulfilled",
+        status="UNFULFILLED",
+        priority="LOW",
     )
     md = item.render()
     assert "↓" in md
@@ -168,7 +193,7 @@ def test_channel_digest_to_markdown():
     assert "# Daily Digest: Test Header" in md
     assert "**Date**: 2025-01-01" in md
     assert "## Sub-summary" in md
-    assert "## 🔗 Key Links" in md
+    assert "## [LINKS] Key Links" in md
     assert "- [Title](http://link.com)" in md
 
 
@@ -190,10 +215,13 @@ def test_channel_digest_priority_sorting():
         FileItem(title="Medium", description="x", priority="MEDIUM"),
     ]
     digest = ChannelDigest(
-        channel_name="Test", date=datetime(2025, 1, 1).date(),
-        summaries=[], items=items, key_links=[],
+        channel_name="Test",
+        date=datetime(2025, 1, 1).date(),
+        summaries=[],
+        items=items,
+        key_links=[],
     )
-    md = digest.to_markdown()
+    digest.to_markdown()
     # Courses section should list High before others
     # But these are in different sections, so check request section ordering
     # All are different categories — let's test with same category
@@ -203,8 +231,11 @@ def test_channel_digest_priority_sorting():
         RequestItem(title="Med Req", description="x", priority="MEDIUM"),
     ]
     digest2 = ChannelDigest(
-        channel_name="Test", date=datetime(2025, 1, 1).date(),
-        summaries=[], items=items2, key_links=[],
+        channel_name="Test",
+        date=datetime(2025, 1, 1).date(),
+        summaries=[],
+        items=items2,
+        key_links=[],
     )
     md2 = digest2.to_markdown()
     high_pos = md2.index("High Req")
@@ -220,8 +251,11 @@ def test_channel_digest_categorized_sections():
         RequestItem(title="R1", description="Req"),
     ]
     digest = ChannelDigest(
-        channel_name="Test", date=datetime(2025, 1, 1).date(),
-        summaries=[], items=items, key_links=[],
+        channel_name="Test",
+        date=datetime(2025, 1, 1).date(),
+        summaries=[],
+        items=items,
+        key_links=[],
     )
     md = digest.to_markdown()
     assert "## 📂 Files Shared" in md

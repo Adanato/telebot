@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Any
 
 from course_scout.domain.models import ChannelDigest, TelegramMessage
 
@@ -7,7 +8,11 @@ from course_scout.domain.models import ChannelDigest, TelegramMessage
 class ScraperInterface(ABC):
     @abstractmethod
     async def get_messages(
-        self, channel_id: str | int, start_date: datetime, topic_id: int | None = None
+        self,
+        channel_id: str | int,
+        start_date: datetime,
+        end_date: datetime | None = None,
+        topic_id: int | None = None,
     ) -> list[TelegramMessage]:
         pass
 
@@ -48,7 +53,7 @@ class AIProvider(ABC):
         input_data: str,
         output_schema: type,
         media_paths: list[str] | None = None,
-    ) -> any:
+    ) -> Any:
         """Generate structured output using the provider's SDK.
 
         `media_paths` (optional): list of local image paths to attach to the user

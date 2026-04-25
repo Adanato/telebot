@@ -20,9 +20,8 @@ import base64
 import json
 import logging
 import os
-from pathlib import Path
-
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -37,13 +36,14 @@ async def _stream_user_turn(content: list[dict]) -> AsyncIterator[dict]:
     `claude_agent_sdk.query()`. A bare list of content blocks hangs the
     bundled CLI subprocess (stdin never closed). See claude_provider for
     the shared helper — duplicated here to keep vision.py standalone.
-    """
+    """  # noqa: D205
     yield {
         "type": "user",
         "message": {"role": "user", "content": content},
         "parent_tool_use_id": None,
         "session_id": None,
     }
+
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ def _load_cache() -> dict[str, str]:
             _cache = {}
     else:
         _cache = {}
+    assert _cache is not None
     return _cache
 
 
@@ -76,6 +77,7 @@ async def _save_cache() -> None:
     tmp.write_text(json.dumps(_cache, ensure_ascii=False, indent=2))
     tmp.replace(_CACHE_PATH)
 
+
 _VISION_SYSTEM_PROMPT = (
     "You caption image attachments from an art community. One short line. "
     "Identify: (1) book/course titles visible (any language — also transliterate), "
@@ -86,11 +88,16 @@ _VISION_SYSTEM_PROMPT = (
 )
 
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024
-_SUPPORTED = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-              ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
+_SUPPORTED = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
 
 
-async def caption_image(path: str, model: str = "claude-haiku-4-5") -> str:
+async def caption_image(path: str, model: str = "claude-haiku-4-5") -> str:  # noqa: C901
     """Return a short text caption for one image. Empty string on any failure.
 
     Cached in media_cache/captions.json — filename key, cache survives across

@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import logging
 import os
+from typing import Any, cast
 
 from telethon import TelegramClient
 
@@ -46,8 +47,6 @@ class TelethonScraper(ScraperInterface):
         messages = []
 
         # Create client fresh for each call to avoid state issues
-        from typing import Any
-
         client: Any = TelegramClient(self.session_path, self.api_id, self.api_hash)
 
         try:
@@ -84,7 +83,7 @@ class TelethonScraper(ScraperInterface):
 
             try:
                 await asyncio.wait_for(_iterate(), timeout=TOPIC_FETCH_TIMEOUT_SEC)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     f"Fetch timed out after {TOPIC_FETCH_TIMEOUT_SEC}s for "
                     f"channel={channel_id}, topic={topic_id}. "
@@ -108,7 +107,7 @@ class TelethonScraper(ScraperInterface):
         from telethon.tl.types import InputMessagesFilterPinned
 
         messages: list[TelegramMessage] = []
-        client = TelegramClient(self.session_path, self.api_id, self.api_hash)
+        client: Any = TelegramClient(self.session_path, self.api_id, self.api_hash)
         try:
             await client.connect()
             if not await client.is_user_authorized():
@@ -122,9 +121,7 @@ class TelethonScraper(ScraperInterface):
                     limit=50,
                 ):
                     if message.text or message.media:
-                        messages.append(
-                            await self._process_message(channel_id, message, topic_id)
-                        )
+                        messages.append(await self._process_message(channel_id, message, topic_id))
             except Exception as e:
                 logger.warning(f"Pin fetch failed for channel={channel_id} topic={topic_id}: {e}")
         finally:
@@ -136,7 +133,7 @@ class TelethonScraper(ScraperInterface):
         self, channel_id: str | int, message_id: int, topic_id: int | None = None
     ) -> TelegramMessage | None:
         """Fetch a specific message by ID and verify it exists."""
-        client = TelegramClient(self.session_path, self.api_id, self.api_hash)
+        client: Any = TelegramClient(self.session_path, self.api_id, self.api_hash)
         try:
             await client.connect()
             if not await client.is_user_authorized():
@@ -159,7 +156,7 @@ class TelethonScraper(ScraperInterface):
         self, channel_id: str | int, query: str, topic_id: int | None = None, limit: int = 5
     ) -> list[TelegramMessage]:
         """Search for messages containing the given query string."""
-        client = TelegramClient(self.session_path, self.api_id, self.api_hash)
+        client: Any = TelegramClient(self.session_path, self.api_id, self.api_hash)
         try:
             await client.connect()
             if not await client.is_user_authorized():
@@ -183,7 +180,7 @@ class TelethonScraper(ScraperInterface):
         """List forum topics for a given channel."""
         from telethon import functions
 
-        client = TelegramClient(self.session_path, self.api_id, self.api_hash)
+        client: Any = TelegramClient(self.session_path, self.api_id, self.api_hash)
         try:
             await client.connect()
             if not await client.is_user_authorized():
@@ -196,8 +193,12 @@ class TelethonScraper(ScraperInterface):
 
             result = await client(
                 functions.messages.GetForumTopicsRequest(
-                    peer=entity, offset_date=None, offset_id=0, offset_topic=0, limit=100
-                )  # type: ignore
+                    peer=cast(Any, entity),
+                    offset_date=None,
+                    offset_id=0,
+                    offset_topic=0,
+                    limit=100,
+                )
             )
             return [{"id": t.id, "title": t.title} for t in result.topics]
         finally:
@@ -218,7 +219,7 @@ class TelethonScraper(ScraperInterface):
             return f"https://t.me/c/{stripped_id}{topic_suffix}/{mid}"
         return f"https://t.me/{cid_str}/{mid}"
 
-    async def _process_message(
+    async def _process_message(  # noqa: C901
         self, channel_id: str | int, message, topic_id: int | None, media_dir: str | None = None
     ) -> TelegramMessage:
         """Convert a Telethon message to our domain model."""
@@ -231,9 +232,7 @@ class TelethonScraper(ScraperInterface):
         # ── Engagement signals ──
         reaction_count = 0
         if getattr(message, "reactions", None) and getattr(message.reactions, "results", None):
-            reaction_count = sum(
-                getattr(r, "count", 0) or 0 for r in message.reactions.results
-            )
+            reaction_count = sum(getattr(r, "count", 0) or 0 for r in message.reactions.results)
         views = getattr(message, "views", None)
         forwards = getattr(message, "forwards", 0) or 0
         reply_count = 0
@@ -257,9 +256,7 @@ class TelethonScraper(ScraperInterface):
                         document_filename = name
                         break
                 if not document_filename:
-                    document_filename = getattr(
-                        getattr(message, "file", None), "name", None
-                    )
+                    document_filename = getattr(getattr(message, "file", None), "name", None)
 
         # ── Link preview (webpage metadata for URLs) ──
         web_preview_title = None
