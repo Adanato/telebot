@@ -236,7 +236,7 @@ async def _fetch_all_topics(scraper, tasks, start_date, end_date):
     return fetched
 
 
-async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False):  # noqa: C901
+async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False, dedup=True):  # noqa: C901
     """Scan all tasks: fetch messages sequentially, then summarize in parallel."""
     from datetime import timedelta
     from zoneinfo import ZoneInfo
@@ -294,6 +294,20 @@ async def _scan_all_tasks(scraper, settings, tasks, days, include_today=False): 
                 _enforce_category_allowlist(digest, task.system_prompt_name, topic_name=name)
                 _reclassify_by_topic_name(digest, name)
                 _assign_priority(digest)
+
+                # Cross-run dedup: drop course/file items whose links/filenames
+                # were already surfaced in prior digests. Re-shares are noise.
+                if dedup:
+                    from course_scout.infrastructure.dedup import DigestDeduper
+
+                    pre_count = len(digest.items)
+                    dropped = DigestDeduper(channel_name=name).filter(digest)
+                    if dropped:
+                        topic_log.info(
+                            f"Dedup: dropped {dropped}/{pre_count} previously-seen item(s)"
+                        )
+                else:
+                    topic_log.info("Dedup: skipped (--no-dedup)")
 
                 # Pin-diff: run against cache, prepend to summaries if changed.
                 # Swallowed errors can't break the main scan.
@@ -708,6 +722,12 @@ def scan(
     days: int = typer.Option(1, "--days", "-d", help="Number of complete days to scan"),
     pdf: bool = typer.Option(True, "--pdf/--no-pdf", help="Generate PDF report (default: on)"),
     today: bool = typer.Option(False, "--today", help="Include today (incomplete day)"),
+    dedup: bool = typer.Option(
+        True,
+        "--dedup/--no-dedup",
+        help="Filter previously-seen course/file items (default: on). "
+        "Use --no-dedup for a manual rerun showing everything.",
+    ),
 ):
     """Scan all configured topics. Defaults to yesterday (last complete day)."""
     setup_logging()
@@ -729,7 +749,14 @@ def scan(
     typer.echo(f"━━━ Course Scout — Scanning {len(settings.tasks)} topics ({label}) ━━━\n")
 
     all_results = asyncio.run(
-        _scan_all_tasks(scraper, settings, settings.resolved_tasks, days, include_today=today)
+        _scan_all_tasks(
+            scraper,
+            settings,
+            settings.resolved_tasks,
+            days,
+            include_today=today,
+            dedup=dedup,
+        )
     )
 
     if not all_results:
@@ -775,7 +802,7 @@ def post_task(
         None,
         "--vault-dir",
         help="Override Obsidian vault path (else COURSE_SCOUT_VAULT_DIR env, "
-             "else ~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault)",
+        "else ~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault)",
     ),
 ):
     """Publish a TaskNotes Inbox stub for a course-scout daily report.
@@ -801,7 +828,8 @@ def post_task(
 
     if date is None:
         dated = sorted(
-            d.name for d in parent.iterdir()
+            d.name
+            for d in parent.iterdir()
             if d.is_dir() and _re.fullmatch(r"\d{4}-\d{2}-\d{2}", d.name)
         )
         if not dated:

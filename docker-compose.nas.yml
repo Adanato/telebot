@@ -8,6 +8,7 @@ services:
       - cs-reports:/app/reports
       - cs-logs:/app/logs
       - cs-media:/app/media_cache
+      - cs-data:/app/data
       - /home/Adam/.claude:/home/appuser/.claude:ro
       - /home/Adam/.claude.json:/home/appuser/.claude.json:ro
       - /home/Adam/course-scout-session/course_scout.session:/app/course_scout.session
@@ -30,3 +31,4 @@ volumes:
   cs-reports:
   cs-logs:
   cs-media:
+  cs-data:
