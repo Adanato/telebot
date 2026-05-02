@@ -9,7 +9,7 @@ Telegram art channel scanner. Fetches messages via Telethon with rich metadata (
 ```
 Stage 0  CLI (scan)
    ↓
-Stage 1  Telethon Fetch (per topic, 180s timeout)
+Stage 1  Telethon Fetch (per topic, runtime.topic_fetch_timeout)
             Captures: reactions, views, forwards, replies,
                       document_filename (non-image docs),
                       web_preview_{title,description,url,site}
@@ -118,7 +118,7 @@ covers 95% of cases (Mac is awake by then) without any new infrastructure.
 
 ## Config
 
-- `config.yaml` — topics, agent defaults, prompt templates
+- `config.yaml` — topics, agent defaults, prompt templates, **runtime knobs** (`runtime:` block — see "Runtime config" below)
 - `.env` — Telegram credentials (`TG_API_ID`, `TG_API_HASH`, `PHONE_NUMBER`)
 - Auth: Claude Agent SDK auto-detects Claude Max subscription via CLI
 - **SDK pinned to `claude-agent-sdk==0.1.65`** in `pyproject.toml`. Past pin to 0.1.50 was lifted after discovering:
@@ -126,6 +126,40 @@ covers 95% of cases (Mac is awake by then) without any new infrastructure.
   - `output_format=json_schema` injects a `StructuredOutput` pseudo-tool that consumes at least one turn internally. With richer inputs Haiku can need 3-4 turns — we use `max_turns=5` as a safety ceiling (unused turns don't cost tokens).
 - **Why Agent SDK**: We use the Agent SDK (not the raw `anthropic` API) because we authenticate via Claude Max subscription, not an API key. The Agent SDK piggybacks on the Claude Code CLI auth.
 - **Security / tool control**: We opt in with `allowed_tools=[]` (empty allowlist = no built-in tools at all). This is the future-proof pattern in 0.1.51+; `disallowed_tools` is a brittle blocklist because new built-in tools added upstream bypass it. `permission_mode` stays at default (no `bypassPermissions`). `setting_sources=[]` prevents filesystem settings injection.
+
+### Runtime config (timeouts, retries, rate limits, log path)
+
+All previously-hardcoded knobs (API timeouts, retry counts, rate limits, image caps,
+Telethon fetch timeout, log path) live under the `runtime:` block in `config.yaml`.
+Loaded once at startup via `infrastructure/runtime.py::get_runtime()` and cached;
+removing the block uses defaults defined in `RuntimeConfig`.
+
+```yaml
+runtime:
+  provider_call_timeout: 600.0       # outer wrapper around generate_structured()
+  max_retries: 3                     # per-model retry attempts
+  rate_limit_retry_sleep: 65.0       # sleep on 429/RATE error
+  max_turns: 5                       # max turns per claude_agent_sdk.query()
+  rate_limit_rpm: 50                 # local rate limiter rpm
+  topic_fetch_timeout: 180.0         # per-topic Telethon fetch timeout
+  max_images_per_call: 20            # max image attachments per LLM call
+  log_path: "/tmp/course-scout-runtime.log"
+```
+
+**To add a new tunable knob:** add the field to `RuntimeConfig` in
+`infrastructure/runtime.py` (with a default), then read it in code via
+`from course_scout.infrastructure.runtime import get_runtime; rt = get_runtime()`.
+Don't add new module-level constants for tunables — keep them in `RuntimeConfig`
+so there's one place to manage configs.
+
+**Runtime log** at `runtime.log_path` — append-only JSON-line file written by
+`worker.py::_runtime_log()` around the batch run. One line per run with
+`started_at`, `ended_at`, `duration_s`, `exit_status` (`ok` / `failed`),
+`error`, and `traceback`. Tail with:
+
+```bash
+tail -f /tmp/course-scout-runtime.log | jq .
+```
 
 ### Per-topic agent config
 

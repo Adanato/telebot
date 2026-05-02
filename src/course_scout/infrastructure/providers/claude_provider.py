@@ -132,15 +132,15 @@ class ClaudeProvider(AIProvider):
         """
         schema = output_schema.model_json_schema()
 
+        from course_scout.infrastructure.runtime import get_runtime
+
         options = ClaudeAgentOptions(
             model=model_id,
             system_prompt=system_prompt,
-            # output_format=json_schema injects a StructuredOutput pseudo-tool
-            # that consumes at least one turn internally. With richer inputs
-            # (engagement fields, [File:/Link:] annotations) Haiku occasionally
-            # needs 3-4 turns before it emits the structured payload. 5 is a
-            # generous ceiling — unused turns don't cost tokens.
-            max_turns=5,
+            # max_turns is read from runtime config (default 5). With structured
+            # output, Haiku occasionally needs 3-4 turns before emitting the
+            # payload. Unused turns don't cost tokens — generous is fine.
+            max_turns=get_runtime().max_turns,
             setting_sources=[],
             allowed_tools=[],
             thinking=cast(Any, self._thinking_config()),

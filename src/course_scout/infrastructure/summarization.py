@@ -207,7 +207,7 @@ class OrchestratedSummarizer(SummarizerInterface):
         return chunks
 
     # Cap on images captioned per chunk (most-recent wins if more).
-    _MAX_IMAGES_PER_CALL = 20
+    # _MAX_IMAGES_PER_CALL moved to runtime config (`runtime.max_images_per_call`).
     _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB per image
 
     async def _summarize_chunk(  # noqa: C901
@@ -247,13 +247,16 @@ class OrchestratedSummarizer(SummarizerInterface):
                 except OSError:
                     pass
             image_msgs.sort(key=lambda m: m.id, reverse=True)
-            if len(image_msgs) > self._MAX_IMAGES_PER_CALL:
-                dropped = image_msgs[self._MAX_IMAGES_PER_CALL :]
+            from course_scout.infrastructure.runtime import get_runtime
+
+            max_images = get_runtime().max_images_per_call
+            if len(image_msgs) > max_images:
+                dropped = image_msgs[max_images:]
                 logger.info(
                     f"[{topic_title}] dropping {len(dropped)} image(s); "
-                    f"captioning only {self._MAX_IMAGES_PER_CALL} most recent"
+                    f"captioning only {max_images} most recent"
                 )
-                image_msgs = image_msgs[: self._MAX_IMAGES_PER_CALL]
+                image_msgs = image_msgs[:max_images]
 
             # Caption in parallel. Map path → caption.
             if image_msgs:

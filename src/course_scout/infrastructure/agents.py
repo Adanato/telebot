@@ -201,20 +201,22 @@ class AIAgent:
         self.output_schema = output_schema
         self.rate_limiter = rate_limiter
 
-    # Per-call timeout. Observed: SDK calls can hang indefinitely with no error.
-    # 10 minutes covers worst-case Sonnet+multi-modal on very dense topics.
-    # Scan runs nightly via cron, so wall-clock isn't critical.
-    PROVIDER_CALL_TIMEOUT = 600.0
-
     async def run(self, input_data: BaseModel) -> BaseModel:
-        """Execute the agent using the injected provider with fallback support."""
+        """Execute the agent using the injected provider with fallback support.
+
+        Timeouts, retry counts, and rate-limit retry sleep are read from the
+        runtime singleton — see `infrastructure/runtime.py` and the `runtime:`
+        block in `config.yaml`.
+        """
+        from course_scout.infrastructure.runtime import get_runtime
+
+        rt = get_runtime()
         last_error = None
 
         for model in self.models:
             retries = 0
-            max_retries = 3
 
-            while retries < max_retries:
+            while retries < rt.max_retries:
                 try:
                     await self.rate_limiter.acquire()
                     logger.info(f"Agent {model} starting request (Attempt {retries + 1})...")
@@ -239,7 +241,7 @@ class AIAgent:
                             output_schema=self.output_schema,
                             media_paths=media_paths or None,
                         ),
-                        timeout=self.PROVIDER_CALL_TIMEOUT,
+                        timeout=rt.provider_call_timeout,
                     )
 
                     logger.debug(f"Agent {model} raw result: {result}")
@@ -250,8 +252,8 @@ class AIAgent:
                     last_error = e
                     retries += 1
                     logger.warning(
-                        f"Agent {model} exceeded {self.PROVIDER_CALL_TIMEOUT}s timeout "
-                        f"(retry {retries}/{max_retries}). Moving on."
+                        f"Agent {model} exceeded {rt.provider_call_timeout}s timeout "
+                        f"(retry {retries}/{rt.max_retries}). Moving on."
                     )
                     # Don't retry-sleep on timeout — move to next model fast
                     break
@@ -260,12 +262,11 @@ class AIAgent:
                     error_str = str(e).upper()
                     if "RATE" in error_str or "429" in error_str:
                         retries += 1
-                        wait_time = 65.0
                         logger.warning(
-                            f"Rate limit hit for {model}. Sleeping {wait_time}s "
-                            f"before retry {retries}/{max_retries}..."
+                            f"Rate limit hit for {model}. Sleeping {rt.rate_limit_retry_sleep}s "
+                            f"before retry {retries}/{rt.max_retries}..."
                         )
-                        await asyncio.sleep(wait_time)
+                        await asyncio.sleep(rt.rate_limit_retry_sleep)
                     else:
                         logger.error(f"Error in agent {model}: {e}")
                         break
@@ -378,7 +379,9 @@ RULES:
         else:
             self.summarizer_models = [str(m) for m in summarizer_model]
 
-        self.rate_limiter = RateLimiter(rpm=50)
+        from course_scout.infrastructure.runtime import get_runtime
+
+        self.rate_limiter = RateLimiter(rpm=get_runtime().rate_limit_rpm)
 
         # Cache providers — created lazily per model
         self._providers: dict[str, AIProvider] = {}

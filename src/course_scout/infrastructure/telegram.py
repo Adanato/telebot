@@ -11,9 +11,9 @@ from course_scout.domain.services import ScraperInterface
 
 logger = logging.getLogger(__name__)
 
-# Per-topic fetch timeout. Telethon will retry connection drops indefinitely
-# (we've seen 30+ minute hangs). After this timeout, skip the topic and move on.
-TOPIC_FETCH_TIMEOUT_SEC = 180
+# Per-topic fetch timeout — read from runtime config (`runtime.topic_fetch_timeout`).
+# Telethon will retry connection drops indefinitely (we've seen 30+ minute hangs);
+# after this timeout, skip the topic and move on.
 
 
 class TelethonScraper(ScraperInterface):
@@ -81,11 +81,14 @@ class TelethonScraper(ScraperInterface):
                         messages.append(telegram_msg)
                         logger.debug(f"Fetched message ID {message.id}")
 
+            from course_scout.infrastructure.runtime import get_runtime
+
+            topic_timeout = get_runtime().topic_fetch_timeout
             try:
-                await asyncio.wait_for(_iterate(), timeout=TOPIC_FETCH_TIMEOUT_SEC)
+                await asyncio.wait_for(_iterate(), timeout=topic_timeout)
             except TimeoutError:
                 logger.warning(
-                    f"Fetch timed out after {TOPIC_FETCH_TIMEOUT_SEC}s for "
+                    f"Fetch timed out after {topic_timeout}s for "
                     f"channel={channel_id}, topic={topic_id}. "
                     f"Returning {len(messages)} partial messages."
                 )

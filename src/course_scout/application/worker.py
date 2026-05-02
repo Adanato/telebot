@@ -1,7 +1,11 @@
 import asyncio
+import json
 import logging
 import os
-from datetime import datetime
+import time
+import traceback
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from course_scout.application.digest import GenerateDigestUseCase
 from course_scout.infrastructure.config import load_settings
@@ -9,10 +13,48 @@ from course_scout.infrastructure.logging_config import setup_logging
 from course_scout.infrastructure.notifier import TelethonNotifier
 from course_scout.infrastructure.persistence import SqliteReportRepository
 from course_scout.infrastructure.reporting import PDFRenderer
+from course_scout.infrastructure.runtime import get_runtime
 from course_scout.infrastructure.summarization import OrchestratedSummarizer
 from course_scout.infrastructure.telegram import TelethonScraper
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _runtime_log(log_path: str, run_label: str = "scan"):
+    """Append one JSON line per run to `log_path`.
+
+    Captures: start/end timestamps, total duration, exit status, error+traceback
+    if any. Used to wrap `CourseScoutWorker.start()` so silent crashes leave a
+    trail. Logging failures are swallowed — never let logging crash the worker.
+    """
+    started_at = datetime.now(UTC).isoformat()
+    start_t = time.monotonic()
+    error: str | None = None
+    tb: str | None = None
+    try:
+        yield
+    except BaseException as e:
+        error = f"{type(e).__name__}: {e}"
+        tb = traceback.format_exc()
+        raise
+    finally:
+        ended_at = datetime.now(UTC).isoformat()
+        duration_s = round(time.monotonic() - start_t, 2)
+        entry = {
+            "label": run_label,
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "duration_s": duration_s,
+            "exit_status": "failed" if error else "ok",
+            "error": error,
+            "traceback": tb,
+        }
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+        except OSError as log_err:
+            logger.warning(f"Could not write runtime log to {log_path}: {log_err}")
 
 
 class CourseScoutWorker:
@@ -121,30 +163,32 @@ class CourseScoutWorker:
 
     async def start(self):
         logger.info("🤖 Course Scout Worker started.")
+        log_path = get_runtime().log_path
 
-        # Initial run on startup if configured
-        if self.settings.tasks:
-            today_str = datetime.now().strftime("%Y-%m-%d")
-            logger.info(f"Found {len(self.settings.tasks)} tasks. Running initial batch...")
+        async with _runtime_log(log_path, run_label="batch"):
+            # Initial run on startup if configured
+            if self.settings.tasks:
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                logger.info(f"Found {len(self.settings.tasks)} tasks. Running initial batch...")
 
-            # Send Batch Start Delimiter
-            if self.notifier:
-                await self.notifier.send_message(
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📅 *BATCH START: {today_str}*\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━"
-                )
+                # Send Batch Start Delimiter
+                if self.notifier:
+                    await self.notifier.send_message(
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"📅 *BATCH START: {today_str}*\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━"
+                    )
 
-            for task in self.settings.tasks:
-                await self.run_task(task)
+                for task in self.settings.tasks:
+                    await self.run_task(task)
 
-            # Send Batch End Delimiter
-            if self.notifier:
-                await self.notifier.send_message(
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"✅ *BATCH COMPLETE: {today_str}*\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━"
-                )
+                # Send Batch End Delimiter
+                if self.notifier:
+                    await self.notifier.send_message(
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"✅ *BATCH COMPLETE: {today_str}*\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━"
+                    )
 
         # Keep alive/Scheduler placeholder
         while True:
