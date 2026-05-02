@@ -162,6 +162,53 @@ class TestBatchScanCoverage(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[0][0], "Working Topic")
 
 
+class TestPinDiffGating(unittest.IsolatedAsyncioTestCase):
+    """Pin diffs only run for non-request channels.
+
+    Request topics (Pan Baidu Download Request, Coloso Requests, etc.) churn
+    pins constantly with one-line replies that get briefly pinned then removed.
+    The LLM already extracts the meaningful request content; pin diffs there
+    duplicate it as noise. Pin diffs stay enabled for discussion lounges and
+    file-share topics where pin changes carry operational signal.
+    """
+
+    async def test_pin_diff_skipped_for_request_channel(self):
+        from unittest.mock import patch
+
+        scraper = AsyncMock()
+        scraper.get_messages.return_value = [_make_message(1)]
+
+        use_case = BatchScanUseCase(
+            scraper=scraper,
+            summarizer_factory=lambda task: _FakeSummarizer(task.name),
+        )
+        task = _make_task("Coloso Requests", 3028, system_prompt="course_requests")
+
+        with patch("course_scout.infrastructure.pins.diff_and_record") as mock_diff:
+            await use_case.execute(tasks=[task], dedup=False)
+            mock_diff.assert_not_called()
+
+    async def test_pin_diff_runs_for_discussion_channel(self):
+        from unittest.mock import patch
+
+        scraper = AsyncMock()
+        scraper.get_messages.return_value = [_make_message(1)]
+
+        use_case = BatchScanUseCase(
+            scraper=scraper,
+            summarizer_factory=lambda task: _FakeSummarizer(task.name),
+        )
+        task = _make_task("Asian Artists Discussion", 166550, system_prompt="discussion_lounge")
+
+        with patch(
+            "course_scout.infrastructure.pins.diff_and_record",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_diff:
+            await use_case.execute(tasks=[task], dedup=False)
+            mock_diff.assert_called_once()
+
+
 class TestBatchScanWindow(unittest.IsolatedAsyncioTestCase):
     """Verify window calculation matches CLI semantics."""
 

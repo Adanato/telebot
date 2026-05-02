@@ -154,15 +154,23 @@ class BatchScanUseCase:
                 topic_logger.info("Dedup: skipped (--no-dedup)")
 
             # Pin diff — best-effort; failures don't break the scan.
-            from course_scout.infrastructure.pins import diff_and_record
+            # Skipped for high-churn request channels where the LLM already
+            # extracts the request content into [REQUESTS] and pin diffs only
+            # duplicate it as noise (every random "thanks" / "hello" message
+            # that gets briefly pinned shows up). Kept for discussion lounges
+            # and file-share topics where pins carry operational signal.
+            if task.system_prompt_name in {"course_requests"}:
+                topic_logger.info("Pin diff: skipped (request channel)")
+            else:
+                from course_scout.infrastructure.pins import diff_and_record
 
-            try:
-                pin_md = await diff_and_record(self.scraper, task.channel_id, task.topic_id)
-                if pin_md:
-                    digest.summaries.insert(0, pin_md)
-                    topic_logger.info("Pin changes detected and injected into summary")
-            except Exception as e:
-                topic_logger.warning(f"Pin diff failed: {e}")
+                try:
+                    pin_md = await diff_and_record(self.scraper, task.channel_id, task.topic_id)
+                    if pin_md:
+                        digest.summaries.insert(0, pin_md)
+                        topic_logger.info("Pin changes detected and injected into summary")
+                except Exception as e:
+                    topic_logger.warning(f"Pin diff failed: {e}")
 
             topic_logger.info(f"Completed: {len(digest.items)} items extracted")
 
