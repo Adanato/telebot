@@ -124,13 +124,22 @@ class TaskNotesPublisher:
         body_parts.append("---")
         body_parts.append("")
         if report_pdf is not None:
-            body_parts.append(f"[📄 Open full report in Skim →](file://{report_pdf})")
+            # `skim://<absolute-path>` opens the PDF in Skim.app on click.
+            # Skim is the user's default PDF handler; this avoids the file:///
+            # → Preview.app fallback that loses page navigation niceties.
+            body_parts.append(f"[📄 Open full report in Skim →](skim://{report_pdf})")
         body_parts.append(f"[📝 Open full markdown →](file://{report_md})")
 
+        # Frontmatter follows the user's TaskNotes plugin convention
+        # (.obsidian/plugins/tasknotes/data.json):
+        #   - status: "1-inbox" matches customStatuses[0].value (the plugin
+        #     filters Inbox views by this exact value, NOT the literal "inbox")
+        #   - priority: "normal" matches customPriorities[2].value
+        #   - tag "task" matches taskTag (taskIdentificationMethod=tag)
         frontmatter = (
             "---\n"
             f'title: "{title}"\n'
-            "status: inbox\n"
+            "status: 1-inbox\n"
             "priority: normal\n"
             f"dateCreated: {date_created}\n"
             f"dateModified: {now_iso}\n"
