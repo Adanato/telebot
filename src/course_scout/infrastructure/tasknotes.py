@@ -2,7 +2,9 @@
 
 The stub:
 
-- Lives in `<vault>/TaskNotes/Inbox/course-scout-YYYY-MM-DD.md`
+- Lives in `<vault>/TaskNotes/course-scout-YYYY-MM-DD.md` (the plugin's
+  `tasksFolder` root — the "Inbox" view is a virtual filter on
+  status=1-inbox, not a folder)
 - Carries TaskNotes frontmatter (`tags: [task, inbox, course-scout]`,
   `status: open`, etc.) so the TaskNotes plugin recognizes it as an
   actionable task in the user's daily review.
@@ -77,7 +79,12 @@ class TaskNotesPublisher:
     def __init__(self, vault_dir: Path | None = None) -> None:
         """Initialize publisher; vault_dir defaults to env or DEFAULT_VAULT_DIR."""
         self.vault_dir = _resolve_vault_dir(vault_dir)
-        self.inbox_dir = self.vault_dir / "TaskNotes" / "Inbox"
+        # The TaskNotes plugin's tasksFolder is `TaskNotes/` (root). Files
+        # placed in `TaskNotes/Inbox/` end up auto-moved to Archive, while
+        # the plugin's "Inbox" *view* is a virtual filter on
+        # status=1-inbox across the whole tasksFolder. So we write to the
+        # root, not to a subfolder named Inbox.
+        self.tasks_dir = self.vault_dir / "TaskNotes"
 
     def publish(self, report_md: Path, report_pdf: Path | None = None) -> Path:
         """Generate the stub and write it to the Inbox. Returns the stub path."""
@@ -100,8 +107,8 @@ class TaskNotesPublisher:
         )
         n_finds = _count_finds(top_finds)
 
-        self.inbox_dir.mkdir(parents=True, exist_ok=True)
-        stub_path = self.inbox_dir / f"{self.SOURCE}-{date}.md"
+        self.tasks_dir.mkdir(parents=True, exist_ok=True)
+        stub_path = self.tasks_dir / f"{self.SOURCE}-{date}.md"
 
         now_iso = datetime.now().astimezone().isoformat(timespec="seconds")
         date_created = _preserve_date_created(stub_path, now_iso)

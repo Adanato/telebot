@@ -42,7 +42,7 @@ class TestTaskNotesPublisher(unittest.TestCase):
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         vault = Path(tmp.name)
-        (vault / "TaskNotes" / "Inbox").mkdir(parents=True)
+        (vault / "TaskNotes").mkdir(parents=True)
 
         report_dir = vault / "reports" / "2026-05-02"
         report_dir.mkdir(parents=True)
@@ -100,7 +100,7 @@ class TestTaskNotesPublisher(unittest.TestCase):
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         vault = Path(tmp.name)
-        (vault / "TaskNotes" / "Inbox").mkdir(parents=True)
+        (vault / "TaskNotes").mkdir(parents=True)
         report_dir = vault / "reports" / "2026-05-02"
         report_dir.mkdir(parents=True)
         report_md = report_dir / "scan_2026-05-02.md"
