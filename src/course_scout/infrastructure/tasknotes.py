@@ -1,7 +1,7 @@
-"""TaskNotes Inbox publisher — convert a course-scout report into a TaskNotes
-task stub inside the user's Obsidian vault.
+"""TaskNotes Inbox publisher — convert a course-scout report into a TaskNotes task stub.
 
 The stub:
+
 - Lives in `<vault>/TaskNotes/Inbox/course-scout-YYYY-MM-DD.md`
 - Carries TaskNotes frontmatter (`tags: [task, inbox, course-scout]`,
   `status: open`, etc.) so the TaskNotes plugin recognizes it as an
@@ -28,9 +28,7 @@ logger = logging.getLogger(__name__)
 
 # macOS default; override via env var COURSE_SCOUT_VAULT_DIR for other machines
 # / non-OneDrive setups.
-DEFAULT_VAULT_DIR = (
-    Path.home() / "Library/CloudStorage/OneDrive-Personal/Obsidian Vault"
-)
+DEFAULT_VAULT_DIR = Path.home() / "Library/CloudStorage/OneDrive-Personal/Obsidian Vault"
 
 
 def _resolve_vault_dir(vault_dir: Path | None) -> Path:
@@ -49,9 +47,7 @@ def _extract_section(md: str, heading: str) -> str:
     that appear in some channel-level reports.
     """
     # Match either `## Heading` OR `## [TAG] Heading`
-    pattern = (
-        rf"^##\s+(?:\[[A-Z]+\]\s+)?{re.escape(heading)}\s*\n(.*?)(?=^##\s|\Z)"
-    )
+    pattern = rf"^##\s+(?:\[[A-Z]+\]\s+)?{re.escape(heading)}\s*\n(.*?)(?=^##\s|\Z)"
     m = re.search(pattern, md, re.MULTILINE | re.DOTALL)
     return m.group(1).strip() if m else ""
 
@@ -79,6 +75,7 @@ class TaskNotesPublisher:
     SOURCE = "course-scout"
 
     def __init__(self, vault_dir: Path | None = None) -> None:
+        """Initialize publisher; vault_dir defaults to env or DEFAULT_VAULT_DIR."""
         self.vault_dir = _resolve_vault_dir(vault_dir)
         self.inbox_dir = self.vault_dir / "TaskNotes" / "Inbox"
 

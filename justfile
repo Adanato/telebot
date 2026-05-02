@@ -72,6 +72,18 @@ coverage:
 @check-architecture:
     uv run lint-imports
 
+# Dead code detection (configured in pyproject.toml [tool.vulture])
+@check-dead:
+    uv run vulture {{SRC}}
+
+# Security linting
+@check-security:
+    uv run bandit -c pyproject.toml -r {{SRC}} -ll
+
+# Spelling check
+@check-spelling:
+    uv run codespell {{SRC}} {{TESTS}} README.md
+
 # Run full project QA (Tests + Linting + Formatting + Types + Architecture)
 @qa:
     @echo "--- 🤖 Course Scout QA ---"
@@ -80,6 +92,18 @@ coverage:
     just check-architecture
     just coverage
     @echo "✅ All code QA checks passed!"
+
+# Run extended QA (adds dead-code, security, spelling on top of qa)
+@qa-strict:
+    @echo "--- 🛡️  Course Scout QA Strict ---"
+    just fix
+    just check-types
+    just check-architecture
+    just check-dead
+    just check-security
+    just check-spelling
+    just coverage
+    @echo "✅ All strict QA checks passed!"
 
 # --- Docker QA ---
 

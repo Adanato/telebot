@@ -48,7 +48,7 @@ def normalize_url(url: str | None) -> str | None:
     - sorts remaining query params for stability
     - strips a trailing slash from non-root paths
 
-    Returns None for empty/unparseable input.
+    Returns None for empty/unparsable input.
     """
     if not url or not isinstance(url, str):
         return None
