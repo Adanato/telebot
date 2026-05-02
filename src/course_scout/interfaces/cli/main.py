@@ -132,6 +132,39 @@ def _filter_tasks_by_topic(
     return narrowed
 
 
+def _maybe_publish_task(md_path: str, pdf_generated: bool) -> None:
+    """Publish a TaskNotes Inbox stub from the just-written report.
+
+    Best-effort: failures (vault dir missing, OS errors, etc.) are logged but
+    do not propagate. Daily Mac-side runs get a kanban-ready stub; NAS Docker
+    runs that pass --no-publish-task skip this entirely; everything in between
+    degrades gracefully.
+    """
+    from pathlib import Path
+
+    from course_scout.infrastructure.tasknotes import TaskNotesPublisher
+
+    try:
+        publisher = TaskNotesPublisher()
+        # Skip if the resolved vault dir doesn't exist on this machine
+        # (typical for NAS Docker without a vault mount).
+        if not publisher.vault_dir.exists():
+            logger.info(
+                "TaskNotes vault not available at %s — skipping publish",
+                publisher.vault_dir,
+            )
+            return
+        md = Path(md_path)
+        pdf_path = md.with_suffix(".pdf") if pdf_generated else None
+        if pdf_path is not None and not pdf_path.is_file():
+            pdf_path = None
+        stub = publisher.publish(md, pdf_path)
+        typer.echo(f"📌 TaskNotes stub: {stub}")
+    except Exception as e:
+        logger.warning("TaskNotes publish failed: %s", e, exc_info=True)
+        typer.echo(f"⚠️  TaskNotes publish skipped: {e}")
+
+
 def _output_combined_report(
     all_results: list[tuple[str, ChannelDigest]],
     pdf: bool,
@@ -212,6 +245,14 @@ def scan(
         help="Filter previously-seen course/file items (default: on). "
         "Use --no-dedup for a manual rerun showing everything.",
     ),
+    publish_task: bool = typer.Option(
+        True,
+        "--publish-task/--no-publish-task",
+        help="Auto-publish a TaskNotes Inbox stub from the report (default: on). "
+        "Skipped automatically when --topic is used (single-topic runs are ad-hoc) "
+        "or when the vault directory is unavailable. Use --no-publish-task to "
+        "disable explicitly (e.g. NAS Docker runs).",
+    ),
 ):
     """Generate a digest across configured topics (all by default; one with --topic)."""
     setup_logging()
@@ -260,7 +301,13 @@ def scan(
     # Render report from (name, digest) pairs.
     display_results = [(name, digest) for name, digest, _provider in all_results]
     label_suffix = f"_{topic.replace(' ', '_')}" if topic else ""
-    _output_combined_report(display_results, pdf, label_suffix=label_suffix)
+    md_path = _output_combined_report(display_results, pdf, label_suffix=label_suffix)
+
+    # Publish TaskNotes Inbox stub for daily Mac-side flow. Skipped for
+    # single-topic runs (ad-hoc) and silently no-ops when the vault is
+    # unavailable (NAS container path).
+    if publish_task and topic is None:
+        _maybe_publish_task(md_path, pdf)
 
     # Aggregate usage across providers.
     from course_scout.infrastructure.providers.claude_provider import UsageStats

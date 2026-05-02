@@ -53,23 +53,64 @@ Stage 10 Markdown + PDF report
 ```
 
 - **Domain**: `TelegramMessage` (with engagement counts + doc filename + link preview fields), `ChannelDigest`, `DigestItem` (discriminated union: file / course / discussion / request / announcement), `LinkItem`
-- **Infrastructure**: `TelethonScraper`, `ClaudeProvider` (Agent SDK), `OrchestratedSummarizer`, `PDFRenderer`, `vision.py` (per-image Haiku caption cache), `pins.py` (pinned-message diff), `deep_links.py` (URL rewriter)
+- **Application**:
+  - `GenerateDigestUseCase` — single-topic digest (used by worker, MCP, API)
+  - `BatchScanUseCase` — many-topic orchestration (used by CLI scan, single or all)
+  - `digest_processing.py` — post-LLM guardrails (allowlist, reclassify, priority)
+  - `executive_summary.py` — cross-topic top-5 ranking
+  - `worker.py` — long-running daemon mode (SSE)
+- **Infrastructure**: `TelethonScraper`, `ClaudeProvider` (Agent SDK), `OrchestratedSummarizer`, `PDFRenderer`, `vision.py` (per-image Haiku caption cache), `pins.py` (pinned-message diff), `deep_links.py` (URL rewriter), `dedup.py` (cross-run seen-items filter), `runtime.py` (config singleton)
 - **Interfaces**: CLI (`typer`), MCP (stdio), SSE server
+
+**DDD layer contract**: `interfaces` → `application` → `infrastructure` → `domain`. Enforced by `import-linter`. Orchestration logic lives in `application/`, never in `interfaces/`. The previous `_scan_all_tasks` helper that lived in CLI is gone; all of it moved into `BatchScanUseCase`.
 
 ## Key Commands
 
 ```bash
-uv run course-scout scan              # Scan yesterday (all topics)
-uv run course-scout scan --today      # Scan today (incomplete day)
-uv run course-scout scan -d 3         # Last 3 complete days
-uv run course-scout scan --no-pdf     # Markdown only
-uv run course-scout digest <channel> -t <topic_id>  # Single topic
-uv run course-scout list-topics <channel_id>         # List forum topics
-uv run course-scout post-task         # Publish TaskNotes Inbox stub for most recent scan
-uv run course-scout post-task --date 2026-04-25      # Specific date
+# Scan (auto-publishes to TaskNotes vault by default — see "TaskNotes integration" below)
+uv run course-scout scan                          # Yesterday, all topics, dedup on, +TaskNotes stub
+uv run course-scout scan --today                  # Today (incomplete day)
+uv run course-scout scan -d 3                     # Last 3 complete days
+uv run course-scout scan --topic 10683            # Single topic by ID (no auto-publish)
+uv run course-scout scan --topic "Pan Baidu"      # Single topic by name (substring)
+uv run course-scout scan --no-pdf                 # Markdown only
+uv run course-scout scan --no-dedup               # Re-surface previously-seen items
+uv run course-scout scan --no-publish-task        # Skip TaskNotes stub (e.g. NAS Docker)
+
+# Auxiliary
+uv run course-scout list-topics <channel_id>      # List forum topics
+uv run course-scout resolve-channel-id <alias>    # Resolve coursebusters → -1001603660516
+uv run course-scout post-task                     # Manual publish from latest report
+uv run course-scout post-task --date 2026-04-25   # Specific date
+
+# QA
+just test                # All tests (~1.5s)
+just qa                  # lint + types + arch + coverage
+just qa-strict           # qa + vulture + bandit + codespell
+just check-dead          # vulture only
+just check-security      # bandit only
+just check-spelling      # codespell only
 ```
 
+**One CLI command, two modes.** As of 2026-05-02 there is a single `scan`
+command. Single-topic mode (`--topic`) and all-topics mode (no flag) flow
+through the same `BatchScanUseCase` in the application layer, so they share
+post-processing semantics by construction. The previous separate `digest`
+command has been removed; everything goes through `scan`.
+
 ## TaskNotes Publishing
+
+The daily flow is integrated: `scan` auto-publishes a TaskNotes Inbox stub
+at the end of every full run. The standalone `post-task` command remains
+for re-publishing an older report on demand.
+
+**Auto-publish rules** (in `interfaces/cli/main.py::_maybe_publish_task`):
+
+- Default ON for full scans. Skip with `--no-publish-task`.
+- Skipped automatically for `--topic` runs (single-topic = ad-hoc, not daily).
+- Best-effort: if the resolved vault dir doesn't exist (NAS Docker without a
+  vault mount), it logs and moves on. The scan never fails because TaskNotes
+  publishing failed.
 
 The `post-task` command writes a TaskNotes-formatted stub of the most recent
 scan into the user's Obsidian vault Inbox so the daily digest surfaces as an
@@ -249,8 +290,9 @@ _ESCALATION = {
 | `error_max_turns` with `output_format=json_schema` | `max_turns=5` (StructuredOutput pseudo-tool eats turns) | `claude_provider.py::generate_structured` |
 | Vision call rate-limited by sync lock | `asyncio.Lock + asyncio.sleep` rate limiter (prior `threading.Lock + time.sleep` froze the event loop) | `rate_limiter.py`, `agents.py` |
 | Parser emits `{"items": "[...]"}` (string-encoded list) | JSON repair: parse string fields as JSON, truncate to last balanced bracket | `claude_provider.py::_repair_string_json_fields` |
-| Topic name says "Request" but parser emits `file` | Python post-processing forces request category | `main.py::_reclassify_by_topic_name` |
-| Parser sets wrong priority | Deterministic Python override | `main.py::_assign_priority` |
+| Topic name says "Request" but parser emits `file` | Python post-processing forces request category | `application/digest_processing.py::reclassify_by_topic_name` |
+| Parser sets wrong priority | Deterministic Python override | `application/digest_processing.py::assign_priority` |
+| Configured topic with N=1 message silently dropped | Removed `>=3` filter; now `if messages:` (any non-zero count). Regression guard in `tests/integration/test_batch_scan_coverage.py::test_single_message_topic_not_dropped` | `application/batch_scan.py::_fetch_all` |
 | Context overflow on big topics | Token-aware chunking + model escalation | `summarization.py::_pick_model` |
 | Pin fetch fails for one topic | Logged + swallowed — never breaks main scan | `pins.py::diff_and_record` |
 
@@ -291,9 +333,14 @@ benchmark/
 | Course review | Course Review | sonnet-4-6 | course_review |
 | Language chats | Russian, Spanish/Portuguese, Hindi/Urdu | sonnet-4-6 | language_chat |
 | Course requests | Coloso, 2D Related, Animation, Domestika, Class 101, Wingfox, Patreon, ALL REQUESTS | haiku-4-5 | course_requests |
-| Download requests | Pan Baidu, Bilibili | haiku-4-5 | course_requests |
-| File sources | Members Collaboration | sonnet-4-6 | file_sharing |
+| Download requests | Pan Baidu Download Request, Bilibili | haiku-4-5 | course_requests |
+| File sources | Members Collaboration, **Pan Baidu Files**, **Pan Baidu Courses** | sonnet-4-6 | file_sharing |
 | External | GBUYB | haiku-4-5 | course_requests |
+
+**Note**: Pan Baidu Files (10686) and Pan Baidu Courses (319355) were added on
+2026-05-02 along with the >=3 filter fix. Pan Baidu Download Request (10683)
+was already in the config but was being silently filtered out by the bug;
+it now produces output for single-message days (typical for that topic).
 
 ## Conventions
 
@@ -305,6 +352,48 @@ benchmark/
 - Caches: `media_cache/captions.json` (vision pre-compute), `media_cache/pins.json` (per-topic pinned-message snapshots), `media_cache/media_<msg_id>.jpg` (downloaded images)
 - Section headers in reports use bracket tags (`[FILES]`, `[REQUESTS]`, `[DISCUSSION]`) not emojis
 - Priority is **deterministic** (Python from category+status). Parser MUST NOT set it — the schema field exists but the prompt instructs to leave null.
+
+## Testing & QA
+
+**137 tests, 65% coverage, all gates green** as of 2026-05-02.
+
+```
+tests/
+├── domain/           Pure-function tests (no IO)
+├── application/      Use cases against fakes — including:
+│                     test_executive_summary.py (100% module cov)
+│                     test_digest_usecase.py + test_digest_extra.py
+│                     test_worker.py
+├── infrastructure/   Adapters — telegram, dedup, agents, providers,
+│                     reporting, summarization, config, rate_limiter,
+│                     persistence, pins, schema_parsing, notifier
+├── integration/      Cross-layer end-to-end with fake Telegram + LLM:
+│                     test_batch_scan_coverage.py — 6 tests including
+│                     the 1-msg-topic regression guard
+└── interfaces/       CLI / API / MCP entry surfaces
+                      test_cli.py + test_cli_extra.py + test_cli_helpers.py
+                      test_sse.py + test_mcp.py
+```
+
+**Coverage gate**: 60% (set in `pyproject.toml [tool.coverage.report]`).
+Currently at 65%. Some modules are intentionally at 0% — `vision.py`,
+`deep_links.py`, `tasknotes.py` are separate-concern, low-risk surfaces.
+
+**QA tooling** (configured in `pyproject.toml`, fronted in `justfile`):
+
+| Tool | Purpose | Config |
+|---|---|---|
+| `ruff` | Lint + format | `[tool.ruff]` |
+| `pyright` | Static types | `[tool.pyright]` (`typeCheckingMode = "standard"`) |
+| `import-linter` | DDD layer enforcement | `[[tool.importlinter.contracts]]` |
+| `pytest-cov` | Coverage | `[tool.coverage.report]` |
+| `vulture` | Dead code | `[tool.vulture]` (whitelists CLI/API decorators + entrypoint names) |
+| `bandit` | Security lint | `[tool.bandit]` (skips B101/B104/B108 — intentional /tmp + dev asserts) |
+| `codespell` | Typos | `[tool.codespell]` |
+
+`just qa-strict` runs the full chain: fix → check-types → check-architecture
+→ check-dead → check-security → check-spelling → coverage. Use as the
+pre-commit / pre-push gate.
 
 ## Observability
 

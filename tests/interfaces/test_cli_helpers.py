@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from course_scout.interfaces.cli.main import (
     _filter_tasks_by_topic,
     _make_summarizer_factory,
+    _maybe_publish_task,
     _resolve_channel_id,
     _setup_run_logs,
 )
@@ -111,6 +112,54 @@ class TestSetupRunLogs(unittest.TestCase):
             run_dir = _setup_run_logs()
             self.assertTrue(run_dir.startswith("/tmp/cs-test-logs/scans/"))
             self.assertTrue(os.path.isdir(run_dir))
+
+
+class TestMaybePublishTask(unittest.TestCase):
+    """The auto-publish hook at the end of `scan` is best-effort + degrades gracefully."""
+
+    @patch("course_scout.infrastructure.tasknotes.TaskNotesPublisher")
+    def test_skips_when_vault_dir_missing(self, MockPublisher):
+        from pathlib import Path
+
+        publisher = MockPublisher.return_value
+        publisher.vault_dir = Path("/nonexistent/vault/path/abc123xyz")
+        # Should NOT call publish() because vault dir doesn't exist
+        _maybe_publish_task("reports/2026-05-02/scan_2026-05-02.md", pdf_generated=True)
+        publisher.publish.assert_not_called()
+
+    @patch("course_scout.infrastructure.tasknotes.TaskNotesPublisher")
+    def test_publishes_when_vault_present(self, MockPublisher, tmp_path=None):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "TaskNotes" / "Inbox").mkdir(parents=True)
+
+            publisher = MockPublisher.return_value
+            publisher.vault_dir = vault
+            publisher.publish.return_value = vault / "TaskNotes" / "Inbox" / "stub.md"
+
+            md_path = vault / "scan_2026-05-02.md"
+            md_path.write_text("# header\n## Top 5 Finds\n1. test\n", encoding="utf-8")
+
+            _maybe_publish_task(str(md_path), pdf_generated=False)
+
+            publisher.publish.assert_called_once()
+
+    @patch("course_scout.infrastructure.tasknotes.TaskNotesPublisher")
+    def test_swallows_publisher_errors(self, MockPublisher):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            publisher = MockPublisher.return_value
+            publisher.vault_dir = vault
+            publisher.publish.side_effect = OSError("disk full")
+
+            # Must not raise — failures are logged + reported as a warning line
+            _maybe_publish_task("scan_2026-05-02.md", pdf_generated=True)
 
 
 class TestResolveTopicByName(unittest.IsolatedAsyncioTestCase):
