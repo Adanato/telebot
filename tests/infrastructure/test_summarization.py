@@ -85,9 +85,9 @@ class TestSummarizer(unittest.IsolatedAsyncioTestCase):
         digest = await summarizer.summarize(messages)
 
         full_md = digest.to_markdown()
-        self.assertIn("## 📂 Files Shared", full_md)
-        self.assertIn("## 🗣 Discussions", full_md)
-        self.assertIn("## 🙋 Requests", full_md)
+        self.assertIn("## [FILES] Files Shared", full_md)
+        self.assertIn("## [DISCUSSION] Discussions", full_md)
+        self.assertIn("## [REQUESTS] Requests", full_md)
 
     @patch("course_scout.infrastructure.summarization.AgentOrchestrator")
     async def test_domain_type_conversion(self, MockOrch):

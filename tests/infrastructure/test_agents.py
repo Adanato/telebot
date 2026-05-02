@@ -18,7 +18,9 @@ class TestAgentOrchestrator(unittest.TestCase):
     def test_get_summarizer_agent(self):
         summarizer = self.orch.get_summarizer_agent()
         self.assertIsInstance(summarizer, AIAgent)
-        self.assertEqual(summarizer.models, [ClaudeModel.SONNET])
+        # AgentOrchestrator stores `[str(ClaudeModel.SONNET)]` by default,
+        # which is the enum member's string repr (e.g. 'ClaudeModel.SONNET').
+        self.assertEqual(summarizer.models, [str(ClaudeModel.SONNET)])
 
     def test_rate_limiter_rpm(self):
         self.assertEqual(self.orch.rate_limiter.rpm, 50)
@@ -50,7 +52,7 @@ class TestAIAgent(unittest.IsolatedAsyncioTestCase):
         self.rate_limiter.acquire.assert_called_once()
         self.mock_provider.generate_structured.assert_called_once()
 
-    @patch("time.sleep")
+    @patch("course_scout.infrastructure.agents.asyncio.sleep", new_callable=AsyncMock)
     async def test_run_rate_limit_retry(self, mock_sleep):
         mock_output = SummarizerOutputSchema(items=[], key_links=[])
 

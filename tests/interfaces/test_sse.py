@@ -15,7 +15,7 @@ class TestSSEInterface(unittest.IsolatedAsyncioTestCase):
         JOBS.clear()
 
     @patch("course_scout.interfaces.api.sse.PDFRenderer")
-    @patch("course_scout.interfaces.api.sse.TelegramClient")
+    @patch("telethon.TelegramClient")  # lazy-imported inside handle_pdf_output
     @patch("course_scout.interfaces.api.sse._get_settings")
     async def test_handle_pdf_output(self, mock_settings, MockClient, MockRenderer):
         mock_renderer_inst = MockRenderer.return_value

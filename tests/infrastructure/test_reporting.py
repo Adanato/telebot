@@ -55,11 +55,11 @@ class TestPDFRenderer(unittest.TestCase):
         self.assertIn("Disk Full", path)
 
     def test_section_splitting_logic(self):
-        # Test the regex splitting directly via render_from_markdown with a patch
+        # Section splitting only triggers on level-1 headers (`# `, not `## `).
+        # With two `# ` headers we expect two add_section calls.
         with patch("course_scout.infrastructure.reporting.MarkdownPdf") as MockPdf:
             mock_pdf = MockPdf.return_value
-            text = "# Header 1\nContent 1\n## Header 2\nContent 2"
+            text = "# Header 1\nContent 1\n# Header 2\nContent 2"
             self.renderer.render_from_markdown(text, "test.pdf")
 
-            # Should have called add_section twice for the two headers
             self.assertEqual(mock_pdf.add_section.call_count, 2)

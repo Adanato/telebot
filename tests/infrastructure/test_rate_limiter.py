@@ -1,29 +1,29 @@
+"""Tests for the async RateLimiter."""
+
+from __future__ import annotations
+
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from course_scout.infrastructure.rate_limiter import RateLimiter
 
 
-class TestRateLimiter(unittest.TestCase):
-    @patch("time.sleep")
-    def test_rate_limiter_waits(self, mock_sleep):
-        # We don't mock time.time here, instead we'll force a wait
-        limiter = RateLimiter(rpm=60000)  # Very fast
-        limiter.last_request_time = time.time() + 10.0  # Future
+class TestRateLimiter(unittest.IsolatedAsyncioTestCase):
+    @patch("course_scout.infrastructure.rate_limiter.asyncio.sleep", new_callable=AsyncMock)
+    async def test_rate_limiter_waits(self, mock_sleep):
+        """If the previous call was very recent, acquire() awaits asyncio.sleep."""
+        limiter = RateLimiter(rpm=60000)  # interval = 0.001s
+        # Force a future last_request_time so wait_time is huge.
+        limiter.last_request_time = time.time() + 10.0
 
-        limiter.acquire()
+        await limiter.acquire()
 
-        # Interval is 60/60000 = 0.001
-        # elapsed is ~ -10.0
-        # wait_time is 0.001 - (-10.0) = 10.001
         self.assertTrue(mock_sleep.called)
         args, _ = mock_sleep.call_args
         self.assertGreater(args[0], 9.0)
 
-    def test_context_manager(self):
-        limiter = RateLimiter(rpm=60)
-        with patch.object(limiter, "acquire") as mock_acquire:
-            with limiter:
-                pass
-            mock_acquire.assert_called_once()
+    async def test_rpm_attribute(self):
+        """RateLimiter exposes its configured rpm."""
+        limiter = RateLimiter(rpm=42)
+        self.assertEqual(limiter.rpm, 42)

@@ -258,6 +258,6 @@ def test_channel_digest_categorized_sections():
         key_links=[],
     )
     md = digest.to_markdown()
-    assert "## 📂 Files Shared" in md
-    assert "## 🗣 Discussions" in md
-    assert "## 🙋 Requests" in md
+    assert "## [FILES] Files Shared" in md
+    assert "## [DISCUSSION] Discussions" in md
+    assert "## [REQUESTS] Requests" in md
