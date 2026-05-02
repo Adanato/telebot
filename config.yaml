@@ -6,6 +6,27 @@ global:
   timezone: "America/New_York"
   window_mode: "rolling"
 
+# ── Runtime knobs ──
+# Tunable timeouts, retry counts, and rate limits. Read once at startup via
+# `infrastructure/runtime.py::get_runtime()` and cached. Removing this block
+# uses the defaults documented in RuntimeConfig.
+runtime:
+  # API call layer (Anthropic / Claude Agent SDK)
+  provider_call_timeout: 600.0       # seconds; outer wrapper around generate_structured()
+  max_retries: 3                     # per-model retry attempts before falling back
+  rate_limit_retry_sleep: 65.0       # seconds; sleep on 429/RATE error
+  max_turns: 5                       # max turns per claude_agent_sdk.query()
+  rate_limit_rpm: 50                 # local rate limiter requests-per-minute
+
+  # Telegram fetch layer
+  topic_fetch_timeout: 180.0         # seconds; per-topic Telethon fetch timeout
+
+  # Vision layer
+  max_images_per_call: 20            # max image attachments per LLM call
+
+  # Logging
+  log_path: "/tmp/course-scout-runtime.log"  # append-only JSON-line run log
+
 # Default agent config (overridable per task)
 agent_defaults:
   summarizer_model: "claude-sonnet-4-6"
@@ -328,6 +349,20 @@ tasks:
     channel_id: -1001603660516
     topic_id: 10683
     system_prompt: "course_requests"
+    effort: "high"
+    actions: ["summarize"]
+
+  - name: "Pan Baidu Files"
+    channel_id: -1001603660516
+    topic_id: 10686
+    system_prompt: "file_sharing"
+    effort: "high"
+    actions: ["summarize"]
+
+  - name: "Pan Baidu Courses"
+    channel_id: -1001603660516
+    topic_id: 319355
+    system_prompt: "file_sharing"
     effort: "high"
     actions: ["summarize"]
 

@@ -1,5 +1,9 @@
+"""Extra CLI smoke coverage: error-path behavior."""
+
+from __future__ import annotations
+
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from typer.testing import CliRunner
 
@@ -11,34 +15,23 @@ class TestCLIExtra(unittest.TestCase):
         self.runner = CliRunner()
 
     @patch("course_scout.interfaces.cli.main.TelethonScraper")
-    @patch("course_scout.interfaces.cli.main.Settings")
-    def test_cli_commands_debug(self, MockSettings, MockScraper):
-        # We'll use this single test to debug and cover multiple commands
-        mock_scraper_inst = MockScraper.return_value
-        mock_target = MagicMock()
-        mock_target.id = 123
-
-        mock_client = AsyncMock()
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.get_entity.return_value = mock_target
-        mock_scraper_inst.client = mock_client
+    @patch("course_scout.interfaces.cli.main.load_settings")
+    def test_resolve_and_list_topics_error_paths(self, mock_load_settings, MockScraper):
+        # Settings stub
+        mock_load_settings.return_value.tg_api_id = 123
+        mock_load_settings.return_value.tg_api_hash = "hash"
+        mock_load_settings.return_value.session_path = "test.session"
+        mock_load_settings.return_value.phone_number = None
+        mock_load_settings.return_value.login_code = None
 
         # 1. Resolve channel ID
         result = self.runner.invoke(app, ["resolve-channel-id", "@test"])
-        print(f"DEBUG resolve-channel-id: {result.stdout}")
-
-        # 2. List topics (fail path)
-        mock_scraper_inst.list_topics.side_effect = Exception("Auth fail")
-        result_list = self.runner.invoke(app, ["list-topics", "@test"])
-        print(f"DEBUG list-topics: {result_list.stdout}")
-
-        # 3. Digest (fail path)
-        patch_path = "course_scout.interfaces.cli.main.GenerateDigestUseCase.execute"
-        with patch(patch_path, new_callable=AsyncMock) as mock_exec:
-            mock_exec.side_effect = Exception("API Error")
-            result_digest = self.runner.invoke(app, ["digest", "@test"])
-            print(f"DEBUG digest: {result_digest.stdout}")
-
         self.assertEqual(result.exit_code, 0)
-        # We'll accept partial match if there's any output
-        self.assertTrue(len(result.output) > 0 or len(result_list.output) > 0)
+        self.assertTrue(len(result.output) > 0)
+
+        # 2. List topics — auth failure path
+        mock_scraper_inst = MockScraper.return_value
+        mock_scraper_inst.list_topics = AsyncMock(side_effect=Exception("Auth fail"))
+        result_list = self.runner.invoke(app, ["list-topics", "@test"])
+        # The async helper raises, runner captures non-zero exit
+        self.assertNotEqual(result_list.exit_code, 0)
